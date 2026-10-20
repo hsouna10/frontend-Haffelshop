@@ -25,61 +25,103 @@ import {
   X,
 } from "lucide-react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { demoProducts, type DemoProduct } from "./lib/demo-data";
-import AdminApp, { type DemoOrder } from "./admin/AdminApp";
+import type { DemoProduct } from "./lib/demo-data";
+import AdminApp from "./admin/AdminApp";
+import { apiRequest, clearAuthSession, getAuthSession, saveAuthSession, type ApiCategory, type ApiOrder, type ApiProduct, type AuthSession } from "./lib/api";
 
-type CartLine = { slug: string; size: string; color: string; quantity: number };
+type CartLine = {
+  slug: string;
+  productId: string;
+  variantId?: string;
+  size: string;
+  color: string;
+  quantity: number;
+  price: number;
+  image: string;
+  name: string;
+  brand: string;
+  sku?: string;
+};
 const money = (amount: number) => `${amount.toFixed(3).replace(".", ",")} DT`;
-const demoOrders: DemoOrder[] = [
-  {
-    id: "HF-1005",
-    date: new Date(Date.now() - 1 * 86400000).toISOString(),
-    customer: "Amira Ben Salem",
-    email: "amira@example.com",
-    items: [{ slug: "robe-satinee-alba", size: "M", color: "Sable", quantity: 1 }],
-    total: 129,
-    status: "En attente",
-  },
-  {
-    id: "HF-1004",
-    date: new Date(Date.now() - 2 * 86400000).toISOString(),
-    customer: "Yasmine Trabelsi",
-    email: "yasmine@example.com",
-    items: [{ slug: "veste-oversize-milan", size: "S", color: "Noir", quantity: 1 }],
-    total: 219,
-    status: "En préparation",
-  },
-  {
-    id: "HF-1003",
-    date: new Date(Date.now() - 4 * 86400000).toISOString(),
-    customer: "Ines Gharbi",
-    email: "ines@example.com",
-    items: [
-      { slug: "sneakers-cuir-nova", size: "39", color: "Blanc", quantity: 1 },
-      { slug: "sac-epaule-june", size: "Unique", color: "Marron", quantity: 1 },
-    ],
-    total: 338,
-    status: "Expédiée",
-  },
-  {
-    id: "HF-1002",
-    date: new Date(Date.now() - 6 * 86400000).toISOString(),
-    customer: "Meriem Karray",
-    email: "meriem@example.com",
-    items: [{ slug: "chemise-lin-lea", size: "L", color: "Blanc", quantity: 2 }],
-    total: 198,
-    status: "Livrée",
-  },
-  {
-    id: "HF-1001",
-    date: new Date(Date.now() - 8 * 86400000).toISOString(),
-    customer: "Lina Mansour",
-    email: "lina@example.com",
-    items: [{ slug: "robe-portefeuille-noa", size: "M", color: "Noir", quantity: 1 }],
-    total: 149,
-    status: "Livrée",
-  },
+const clothingCategories = [
+  "T-shirts et débardeurs",
+  "Sweats et hoodies",
+  "Pantalons et joggings",
+  "Shorts",
+  "Leggings",
+  "Vestes et manteaux",
+  "Maillots de sport",
+  "Vêtements de football",
+  "Vêtements de basketball",
+  "Vêtements de running",
 ];
+const shoeCategories = [
+  "Running",
+  "Lifestyle / Sneakers",
+  "Football",
+  "Basketball",
+  "Training / Fitness",
+  "Skateboard",
+  "Randonnée et outdoor",
+  "Chaussures pour enfants",
+];
+const accessoryCategories = [
+  "Sacs et sacoches",
+  "Casquettes et bonnets",
+  "Chaussettes",
+  "Gants et bandeaux",
+  "Gourdes",
+  "Équipements de football",
+  "Équipements de basketball",
+  "Accessoires de training",
+];
+
+function toStoreProduct(product: ApiProduct): DemoProduct {
+  const colors = (product.colors ?? []).map((color) => ({
+    id: color._id,
+    name: color.name,
+    hex: color.hex,
+    images: color.images.map((image) => image.url),
+  }));
+  const variants = (product.variants ?? []).map((variant) => ({
+    id: variant._id,
+    colorId: variant.color,
+    size: variant.size,
+    stock: variant.stock,
+    sku: variant.sku,
+    price: variant.priceOverride,
+  }));
+  const category = typeof product.category === "string" ? product.category : product.category.name;
+  const firstImages = colors[0]?.images ?? [];
+  const image = firstImages[0] || product.image || "";
+  return {
+    id: product._id,
+    productId: product._id,
+    slug: product.slug || product._id,
+    name: product.name,
+    category,
+    price: product.salePrice ?? product.price,
+    oldPrice: product.salePrice !== undefined ? product.price : undefined,
+    image,
+    secondaryImage: firstImages[1] || image,
+    brand: product.brand || "Nike",
+    isNew: product.createdAt
+      ? Date.now() - Date.parse(product.createdAt) <= 30 * 24 * 60 * 60 * 1000
+      : false,
+    sizes: [...new Set(variants.map((variant) => variant.size).filter((size): size is string => Boolean(size)))],
+    color: colors[0]?.name || "Standard",
+    colorHex: colors[0]?.hex || "#211f1b",
+    stock: product.stock,
+    productType: product.productType,
+    productSubtype: product.productSubtype,
+    description: product.description,
+    sku: product.sku,
+    isActive: product.isActive,
+    createdAt: product.createdAt,
+    colors,
+    variants,
+  };
+}
 
 function readStorage<T>(key: string, fallback: T): T {
   try {
@@ -150,13 +192,13 @@ function Header({ cartCount, favoriteCount, search }: { cartCount: number; favor
             <li><NavLink to="/" end className={({ isActive }) => `relative flex h-9 items-center rounded-full px-4 transition-all ${isActive ? "bg-white/85 text-brand shadow-sm" : "text-ink/80 hover:bg-white/70 hover:text-brand"}`}>Accueil</NavLink></li>
             <li><NavLink to="/nouveautes" className={({ isActive }) => `relative flex h-9 items-center rounded-full px-4 transition-all ${isActive ? "bg-white/85 text-brand shadow-sm" : "text-ink/80 hover:bg-white/70 hover:text-brand"}`}>Nouveautés</NavLink></li>
             {[
-              { title: "Vêtements", children: ["Robes", "Vestes", "Tops", "Pantalons", "Maille"] },
-              { title: "Chaussures", children: ["Chaussures"] },
-              { title: "Accessoires", children: ["Accessoires"] },
+              { title: "Vêtements", children: clothingCategories },
+              { title: "Chaussures", children: shoeCategories },
+              { title: "Accessoires", children: accessoryCategories },
             ].map((item) => (
               <li key={item.title} className="group relative flex h-full items-center">
                 <NavLink to={`/catalogue?categorie=${encodeURIComponent(item.children[0])}`} className={({ isActive }) => `relative flex h-9 items-center gap-1 rounded-full px-4 transition-all ${isActive && item.children.some((child) => location.search.includes(encodeURIComponent(child))) ? "bg-white/85 text-brand shadow-sm" : "text-ink/80 hover:bg-white/70 hover:text-brand"}`}>{item.title}<ChevronDown className="h-3 w-3 transition group-hover:rotate-180" /></NavLink>
-                <div className="invisible absolute left-1/2 top-full z-50 min-w-56 -translate-x-1/2 translate-y-2 rounded-2xl border border-white/75 bg-white/75 p-2 opacity-0 shadow-[0_18px_45px_rgba(33,31,27,0.14)] backdrop-blur-2xl transition duration-200 group-hover:visible group-hover:translate-y-1 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-1 group-focus-within:opacity-100">
+                <div className={`invisible absolute left-1/2 top-full z-50 min-w-56 -translate-x-1/2 translate-y-2 rounded-2xl border border-white/75 bg-white/90 p-2 opacity-0 shadow-[0_18px_45px_rgba(33,31,27,0.14)] backdrop-blur-2xl transition duration-200 group-hover:visible group-hover:translate-y-1 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-1 group-focus-within:opacity-100 ${item.children.length > 5 ? "max-h-[70vh] w-72 overflow-y-auto" : ""}`}>
                   <p className="px-3 pb-2 pt-2 text-[10px] font-bold uppercase tracking-[0.16em] text-muted">{item.title}</p>
                   {item.children.map((child) => <Link key={child} to={`/catalogue?categorie=${encodeURIComponent(child)}`} className="block rounded-md px-3 py-2.5 text-xs font-medium normal-case tracking-normal transition hover:bg-soft hover:pl-4 hover:text-brand">{child}<ArrowRight className="float-right h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" /></Link>)}
                 </div>
@@ -168,7 +210,16 @@ function Header({ cartCount, favoriteCount, search }: { cartCount: number; favor
         {menuOpen && <nav aria-label="Menu mobile" className="absolute left-0 right-0 top-full grid gap-1 border-t border-white/70 bg-white/85 px-5 py-4 text-sm font-semibold shadow-[0_16px_30px_rgba(0,0,0,0.12)] backdrop-blur-2xl lg:hidden">
           <NavLink to="/" end className={({ isActive }) => `rounded-md px-3 py-2.5 ${isActive ? "bg-soft text-brand" : "hover:bg-soft"}`}>Accueil</NavLink>
           <NavLink to="/nouveautes" className={({ isActive }) => `rounded-md px-3 py-2.5 ${isActive ? "bg-soft text-brand" : "hover:bg-soft"}`}>Nouveautés</NavLink>
-          <Link to="/catalogue?categorie=Vestes" className="rounded-md px-3 py-2.5 hover:bg-soft">Vêtements</Link><Link to="/catalogue?categorie=Chaussures" className="rounded-md px-3 py-2.5 hover:bg-soft">Chaussures</Link><Link to="/catalogue?categorie=Accessoires" className="rounded-md px-3 py-2.5 hover:bg-soft">Accessoires</Link>
+          {[
+            { title: "Vêtements", children: clothingCategories },
+            { title: "Chaussures", children: shoeCategories },
+            { title: "Accessoires", children: accessoryCategories },
+          ].map((item) => <details key={item.title} className="group rounded-md px-3 py-2.5">
+            <summary className="flex cursor-pointer list-none items-center justify-between hover:text-brand">{item.title}<ChevronDown className="h-4 w-4 transition group-open:rotate-180" /></summary>
+            <div className="mt-2 grid max-h-56 gap-1 overflow-y-auto border-l border-line pl-3">
+              {item.children.map((category) => <Link key={category} to={`/catalogue?categorie=${encodeURIComponent(category)}`} className="rounded-md px-2 py-2 text-xs font-medium text-muted hover:bg-soft hover:text-brand">{category}</Link>)}
+            </div>
+          </details>)}
           <Link to="/compte" className="rounded-md px-3 py-2.5 hover:bg-soft">Mon compte</Link><Link to="/favoris" className="rounded-md px-3 py-2.5 hover:bg-soft">Mes favoris {favoriteCount > 0 && <span className="ml-1 text-xs text-brand">({favoriteCount})</span>}</Link>
           <Link to="/promotions" className="rounded-md px-3 py-2.5 text-brand hover:bg-soft">Promotions</Link>
         </nav>}
@@ -209,14 +260,34 @@ function ProductGrid({ products, favorites, toggleFavorite, columns = 4 }: { pro
   return <div className={`grid grid-cols-2 gap-x-4 gap-y-10 sm:gap-x-6 ${columns === 3 ? "lg:grid-cols-3" : "md:grid-cols-3 xl:grid-cols-4"}`}>{products.map((product) => <ProductCard key={product.slug} product={product} favorite={favorites.includes(product.slug)} toggleFavorite={toggleFavorite} />)}</div>;
 }
 
-function HomePage({ products, favorites, toggleFavorite }: { products: DemoProduct[]; favorites: string[]; toggleFavorite: (slug: string) => void }) {
+function HomePage({ products, categories, favorites, toggleFavorite }: { products: DemoProduct[]; categories: ApiCategory[]; favorites: string[]; toggleFavorite: (slug: string) => void }) {
   const [slide, setSlide] = useState(0);
   const slides = [
-    { image: "https://images.pexels.com/photos/3160389/pexels-photo-3160389.jpeg?auto=compress&cs=tinysrgb&w=2000", eyebrow: "Nouvelle collection", title: "Le style, version premium", text: "Des pièces intemporelles aux coupes affirmées, pensées pour sublimer votre garde-robe.", cta: "Découvrir les nouveautés", href: "/nouveautes" },
+    { image: "https://images.pexels.com/photos/3160389/pexels-photo-3160389.jpeg?auto=compress&cs=tinysrgb&w=2000", eyebrow: "Nouvelle collection", title: "Le style, version premium", text: "Des pièces intemporelles aux coupes affirmées, pensées pour sublimer votre garde-T-shirt.", cta: "Découvrir les nouveautés", href: "/nouveautes" },
     { image: "https://images.pexels.com/photos/7871182/pexels-photo-7871182.jpeg?auto=compress&cs=tinysrgb&w=2000", eyebrow: "Sélection spéciale", title: "Les essentiels de saison", text: "Découvrez les pièces qui accompagnent chaque moment avec élégance.", cta: "Explorer la collection", href: "/catalogue" },
     { image: "https://images.pexels.com/photos/36976906/pexels-photo-36976906.jpeg?auto=compress&cs=tinysrgb&w=2000", eyebrow: "Nouvelle saison", title: "L'élégance au quotidien", text: "Des silhouettes modernes et des matières choisies pour vous accompagner partout.", cta: "Voir la sélection", href: "/catalogue" },
   ];
   const selected = slides[slide];
+  const categoryImages = [
+    "https://images.pexels.com/photos/7679720/pexels-photo-7679720.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1000&h=1300",
+    "https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=800&h=900",
+    "https://images.pexels.com/photos/1152077/pexels-photo-1152077.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=800&h=900",
+    "https://images.pexels.com/photos/3760854/pexels-photo-3760854.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=800&h=900",
+    "https://images.pexels.com/photos/1598507/pexels-photo-1598507.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=800&h=900",
+    "https://images.pexels.com/photos/1152077/pexels-photo-1152077.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1100&h=700",
+  ];
+  const categoryCards = categories.map((category, index) => {
+    const categoryProducts = products.filter((product) => product.category.toLocaleLowerCase() === category.name.toLocaleLowerCase());
+    return {
+      name: category.name,
+      image: category.image || categoryProducts.find((product) => product.image)?.image || categoryImages[index % categoryImages.length],
+      count: categoryProducts.length,
+      featured: index === 0,
+    };
+  });
+  const latestProducts = [...products].sort((left, right) =>
+    (right.createdAt ? Date.parse(right.createdAt) : 0) - (left.createdAt ? Date.parse(left.createdAt) : 0)
+  );
 
   useEffect(() => {
     const timer = window.setInterval(() => setSlide((current) => (current + 1) % slides.length), 6500);
@@ -260,30 +331,22 @@ function HomePage({ products, favorites, toggleFavorite }: { products: DemoProdu
             </Link>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 lg:auto-rows-[minmax(190px,1fr)]">
-            {[
-              { name: "Vêtements", category: "Vestes", eyebrow: "L’allure au quotidien", image: "https://images.pexels.com/photos/7679720/pexels-photo-7679720.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1000&h=1300", featured: true },
-              { name: "Chaussures", category: "Chaussures", eyebrow: "À chaque pas", image: "https://images.pexels.com/photos/2529148/pexels-photo-2529148.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=800&h=900" },
-              { name: "Accessoires", category: "Accessoires", eyebrow: "La touche finale", image: "https://images.pexels.com/photos/1152077/pexels-photo-1152077.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=800&h=900" },
-              { name: "Robes", category: "Robes", eyebrow: "Tout en élégance", image: "https://images.pexels.com/photos/3760854/pexels-photo-3760854.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=800&h=900" },
-              { name: "Sneakers", category: "Chaussures", eyebrow: "Le confort stylé", image: "https://images.pexels.com/photos/1598507/pexels-photo-1598507.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=800&h=900" },
-              { name: "Sacs", category: "Accessoires", eyebrow: "Vos essentiels", image: "https://images.pexels.com/photos/1152077/pexels-photo-1152077.jpeg?auto=compress&cs=tinysrgb&fit=crop&w=1100&h=700" },
-            ].map((item, index) => {
-              const count = products.filter((product) => product.category === item.category).length;
+            {categoryCards.map((item, index) => {
               return (
                 <Link
-                  to={`/catalogue?categorie=${encodeURIComponent(item.category)}`}
+                  to={`/catalogue?categorie=${encodeURIComponent(item.name)}`}
                   key={item.name}
                   className={`group relative isolate block min-h-40 overflow-hidden rounded-2xl bg-ink shadow-[0_8px_24px_rgba(33,31,27,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_36px_rgba(33,31,27,0.18)] sm:rounded-3xl ${item.featured ? "col-span-2 aspect-[1.65/1] lg:row-span-2 lg:aspect-auto lg:min-h-[396px]" : index === 5 ? "col-span-2 aspect-[2.1/1] lg:col-span-2 lg:aspect-auto" : "aspect-[0.88/1] lg:aspect-auto"}`}
                 >
                   <img src={item.image} alt="" loading="lazy" className="absolute inset-0 -z-20 h-full w-full object-cover transition duration-700 ease-out group-hover:scale-105" />
                   <span className="absolute inset-0 -z-10 bg-gradient-to-t from-black/75 via-black/10 to-black/5 transition-colors duration-300 group-hover:from-black/80" />
                   <span className="absolute left-3 top-3 rounded-full border border-white/35 bg-white/15 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-white/95 backdrop-blur-md sm:left-4 sm:top-4 sm:px-3 sm:text-[10px]">
-                    {item.eyebrow}
+                    {index === 0 ? "À découvrir" : "Notre sélection"}
                   </span>
                   <span className="absolute inset-x-3 bottom-3 flex items-end justify-between gap-2 rounded-2xl border border-white/25 bg-white/15 p-3 text-white shadow-lg backdrop-blur-xl sm:inset-x-4 sm:bottom-4 sm:p-4">
                     <span className="min-w-0">
                       <span className={`block truncate font-heading font-bold leading-tight ${item.featured ? "text-xl sm:text-3xl" : "text-base sm:text-xl"}`}>{item.name}</span>
-                      <span className="mt-1 block text-[10px] text-white/75 sm:text-xs">{count} article{count === 1 ? "" : "s"} à découvrir</span>
+                      <span className="mt-1 block text-[10px] text-white/75 sm:text-xs">{item.count} article{item.count === 1 ? "" : "s"} à découvrir</span>
                     </span>
                     <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/40 bg-white/90 text-ink transition duration-300 group-hover:border-brand group-hover:bg-brand group-hover:text-white sm:h-11 sm:w-11 ${item.featured ? "sm:h-12 sm:w-12" : ""}`}>
                       <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 sm:h-5 sm:w-5" />
@@ -297,11 +360,11 @@ function HomePage({ products, favorites, toggleFavorite }: { products: DemoProdu
       </section>
       <section className="container-x mt-20 lg:mt-28">
         <div className="mb-8 flex items-end justify-between"><div><h2 className="section-title">Nouveautés</h2><p className="mt-1.5 text-sm text-muted">Les dernières arrivées de la collection</p></div><Link to="/nouveautes" className="flex items-center gap-1 text-sm font-semibold hover:underline">Tout voir <ArrowRight className="h-4 w-4" /></Link></div>
-        <ProductGrid products={products.filter((product) => product.isNew).slice(0, 4)} favorites={favorites} toggleFavorite={toggleFavorite} />
+        <ProductGrid products={latestProducts.slice(0, 4)} favorites={favorites} toggleFavorite={toggleFavorite} />
       </section>
       <section className="container-x mt-20 lg:mt-28">
-        <div className="mb-8 flex items-end justify-between"><div><h2 className="section-title">Meilleures ventes</h2><p className="mt-1.5 text-sm text-muted">Les articles préférés de nos clientes</p></div><Link to="/catalogue" className="flex items-center gap-1 text-sm font-semibold hover:underline">Voir tout <ArrowRight className="h-4 w-4" /></Link></div>
-        <ProductGrid products={products.slice(2, 6)} favorites={favorites} toggleFavorite={toggleFavorite} />
+        <div className="mb-8 flex items-end justify-between"><div><h2 className="section-title">À découvrir</h2><p className="mt-1.5 text-sm text-muted">Une sélection de produits de notre catalogue</p></div><Link to="/catalogue" className="flex items-center gap-1 text-sm font-semibold hover:underline">Voir tout <ArrowRight className="h-4 w-4" /></Link></div>
+        <ProductGrid products={products.slice(0, 4)} favorites={favorites} toggleFavorite={toggleFavorite} />
       </section>
       <section className="container-x mt-20 lg:mt-28">
         <div className="relative isolate overflow-hidden rounded-2xl bg-ink px-6 py-14 text-white sm:px-12 lg:py-20">
@@ -317,7 +380,7 @@ function HomePage({ products, favorites, toggleFavorite }: { products: DemoProdu
   );
 }
 
-function CatalogPage({ products: allProducts, favorites, toggleFavorite }: { products: DemoProduct[]; favorites: string[]; toggleFavorite: (slug: string) => void }) {
+function CatalogPage({ products: allProducts, categories, favorites, toggleFavorite }: { products: DemoProduct[]; categories: ApiCategory[]; favorites: string[]; toggleFavorite: (slug: string) => void }) {
   const [params, setParams] = useSearchParams();
   const path = useLocation().pathname;
   const category = params.get("categorie") ?? "";
@@ -337,7 +400,14 @@ function CatalogPage({ products: allProducts, favorites, toggleFavorite }: { pro
   if (path === "/nouveautes") { heading = "Nouveautés"; products = products.filter((product) => product.isNew); }
   if (path === "/promotions") { heading = "Promotions"; products = products.filter((product) => product.oldPrice); }
   if (path === "/favoris") { heading = "Mes favoris"; products = products.filter((product) => favorites.includes(product.slug)); }
-  if (category) { heading = category; products = products.filter((product) => product.category === category); }
+  if (category) {
+    heading = category;
+    const normalizedCategory = category.trim().toLocaleLowerCase();
+    products = products.filter((product) =>
+      product.category.trim().toLocaleLowerCase() === normalizedCategory
+      || product.productSubtype?.trim().toLocaleLowerCase() === normalizedCategory
+    );
+  }
   if (term) products = products.filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(term));
   products = products.filter((product) =>
     (!minPrice || product.price >= Number(minPrice)) &&
@@ -377,7 +447,7 @@ function CatalogPage({ products: allProducts, favorites, toggleFavorite }: { pro
         <summary className="cursor-pointer text-sm font-semibold">Catégories</summary>
         <div className="mt-3 space-y-2 text-sm">
           <button onClick={() => { setParams({}); setPage(1); }} className={`block text-left ${!category ? "font-semibold text-brand" : "text-muted hover:text-ink"}`}>Toutes les catégories</button>
-          {["Robes", "Vestes", "Tops", "Pantalons", "Maille", "Chaussures", "Accessoires"].map((item) => <button key={item} onClick={() => { setParams({ categorie: item }); setPage(1); }} className={`block text-left ${category === item ? "font-semibold text-brand" : "text-muted hover:text-ink"}`}>{item}</button>)}
+          {categories.map(({ _id, name }) => <button key={_id} onClick={() => { setParams({ categorie: name }); setPage(1); }} className={`block text-left ${category === name ? "font-semibold text-brand" : "text-muted hover:text-ink"}`}>{name}</button>)}
         </div>
       </details>
       <details open className="border-b border-line py-3">
@@ -436,7 +506,7 @@ function CatalogPage({ products: allProducts, favorites, toggleFavorite }: { pro
   );
 }
 
-function ProductPage({ products, addToCart, favorites, toggleFavorite }: { products: DemoProduct[]; addToCart: (slug: string, size: string, color: string, quantity: number) => void; favorites: string[]; toggleFavorite: (slug: string) => void }) {
+function ProductPage({ products, addToCart, favorites, toggleFavorite }: { products: DemoProduct[]; addToCart: (product: DemoProduct, variantId: string | undefined, size: string, color: string, quantity: number) => void; favorites: string[]; toggleFavorite: (slug: string) => void }) {
   const { slug = "" } = useParams();
   const product = products.find((item) => item.slug === slug);
   const [size, setSize] = useState("");
@@ -444,22 +514,33 @@ function ProductPage({ products, addToCart, favorites, toggleFavorite }: { produ
   const [activeImage, setActiveImage] = useState(0);
   const [zoomOpen, setZoomOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("Description");
-  const [selectedColor, setSelectedColor] = useState("");
+  const [selectedColorId, setSelectedColorId] = useState("");
   const navigate = useNavigate();
   useEffect(() => {
     setActiveImage(0);
     setQuantity(1);
     setSize("");
-    setSelectedColor("");
+    setSelectedColorId("");
   }, [slug]);
   if (!product) return <NotFound />;
-  const selectedSize = size || product.sizes[0];
-  const images = [product.image, product.secondaryImage, product.image, product.secondaryImage];
-  const colors = [
-    { name: product.color, hex: product.colorHex },
-    { name: "Bordeaux", hex: "#762b42" },
-    { name: "Rouge", hex: "#c92538" },
-  ];
+  const colors = product.colors?.length
+    ? product.colors
+    : [{ id: "", name: product.color, hex: product.colorHex, images: [product.image, product.secondaryImage].filter(Boolean) }];
+  const selectedColor = colors.find((color) => color.id === selectedColorId) ?? colors[0];
+  const colorVariants = product.variants?.filter((variant) => variant.colorId === selectedColor.id) ?? [];
+  const sizes = product.variants?.length
+    ? [...new Set(colorVariants.map((variant) => variant.size).filter((value): value is string => Boolean(value)))]
+    : product.sizes;
+  const selectedSize = sizes.includes(size)
+    ? size
+    : (product.variants?.length
+      ? sizes.find((value) => colorVariants.some((variant) => variant.size === value && variant.stock > 0))
+      : undefined) ?? sizes[0] ?? "";
+  const selectedVariant = colorVariants.find((variant) => (variant.size ?? "") === selectedSize);
+  const selectedStock = selectedVariant?.stock ?? (product.variants?.length ? 0 : product.stock);
+  const selectedPrice = selectedVariant?.price ?? product.price;
+  const images = selectedColor.images.length ? selectedColor.images : [product.image, product.secondaryImage].filter(Boolean);
+  const visibleImages = images.length ? images : [""];
 
   return (
     <main className="container-x mb-20 mt-7">
@@ -467,10 +548,10 @@ function ProductPage({ products, addToCart, favorites, toggleFavorite }: { produ
       <div className="grid items-start gap-8 lg:grid-cols-2 lg:gap-12">
         <section className="grid gap-3 sm:grid-cols-[76px_minmax(0,1fr)]">
           <div className="order-2 flex gap-2 overflow-x-auto sm:order-1 sm:flex-col">
-            {images.map((image, index) => <button key={`${image}-${index}`} onClick={() => setActiveImage(index)} aria-label={`Afficher la photo ${index + 1}`} aria-pressed={activeImage === index} className={`h-20 w-16 shrink-0 overflow-hidden rounded border-2 sm:h-24 sm:w-full ${activeImage === index ? "border-ink" : "border-transparent"}`}><img src={image} alt="" className="h-full w-full object-cover" /></button>)}
+            {visibleImages.map((image, index) => <button key={`${image}-${index}`} onClick={() => setActiveImage(index)} aria-label={`Afficher la photo ${index + 1}`} aria-pressed={activeImage === index} className={`h-20 w-16 shrink-0 overflow-hidden rounded border-2 sm:h-24 sm:w-full ${activeImage === index ? "border-ink" : "border-transparent"}`}><img src={image} alt="" className="h-full w-full object-cover" /></button>)}
           </div>
           <button onClick={() => setZoomOpen(true)} aria-label="Agrandir la photo du produit" className="group order-1 relative block aspect-[4/5] overflow-hidden rounded-lg bg-soft sm:order-2">
-            <img src={images[activeImage]} alt={product.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]" />
+            <img src={visibleImages[activeImage] ?? visibleImages[0]} alt={product.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]" />
             <span className="absolute bottom-4 right-4 rounded-full bg-white/90 px-3 py-2 text-xs font-medium">Cliquer pour agrandir</span>
           </button>
         </section>
@@ -478,22 +559,26 @@ function ProductPage({ products, addToCart, favorites, toggleFavorite }: { produ
         <section className="lg:py-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">Haffeli Shop · {product.category}</p>
           <h1 className="mt-2 font-heading text-3xl font-semibold sm:text-4xl">{product.name}</h1>
-          <p className="mt-2 text-xs text-muted">Réf. NV-{String(product.id).padStart(3, "0")}</p>
-          <div className="mt-4 flex flex-wrap items-center gap-3"><span className={`text-2xl font-bold ${product.oldPrice ? "text-brand" : ""}`}>{money(product.price)}</span>{product.oldPrice && <><span className="text-sm text-muted line-through">{money(product.oldPrice)}</span><span className="rounded bg-brand px-2 py-1 text-xs font-bold text-white">-{Math.round((1 - product.price / product.oldPrice) * 100)}%</span></>}</div>
-          <p className="mt-5 border-b border-line pb-5 text-sm leading-7 text-muted">Une pièce intemporelle et soigneusement confectionnée, pensée pour allier confort et élégance. Sa coupe soignée et ses finitions délicates en font un indispensable de votre garde-robe.</p>
+          <p className="mt-2 text-xs text-muted">Réf. {selectedVariant?.sku || product.sku || "—"}</p>
+          <div className="mt-4 flex flex-wrap items-center gap-3"><span className={`text-2xl font-bold ${product.oldPrice || selectedVariant?.price ? "text-brand" : ""}`}>{money(selectedPrice)}</span>{product.oldPrice && !selectedVariant?.price && <><span className="text-sm text-muted line-through">{money(product.oldPrice)}</span><span className="rounded bg-brand px-2 py-1 text-xs font-bold text-white">-{Math.round((1 - product.price / product.oldPrice) * 100)}%</span></>}</div>
+          <p className="mt-5 border-b border-line pb-5 text-sm leading-7 text-muted">{product.description || "Une pièce intemporelle et soigneusement confectionnée, pensée pour allier confort et élégance."}</p>
 
           <div className="mt-5">
-            <p className="mb-3 text-sm font-semibold">Couleur : {selectedColor || product.color}</p>
-            <div className="flex gap-3">{colors.map(({ name, hex }) => <button key={name} onClick={() => setSelectedColor(name)} aria-label={`Choisir ${name}`} aria-pressed={(selectedColor || product.color) === name} title={name} className={`h-9 w-9 rounded-full border border-black/15 ${((selectedColor || product.color) === name) ? "ring-2 ring-brand ring-offset-2" : ""}`} style={{ backgroundColor: hex }} />)}</div>
+            <p className="mb-3 text-sm font-semibold">Couleur : {selectedColor.name}</p>
+            <div className="flex gap-3">{colors.map(({ id, name, hex }) => <button key={id || name} onClick={() => { setSelectedColorId(id); setSize(""); setQuantity(1); setActiveImage(0); }} aria-label={`Choisir ${name}`} aria-pressed={selectedColor.id === id} title={name} className={`h-9 w-9 rounded-full border border-black/15 ${selectedColor.id === id ? "ring-2 ring-brand ring-offset-2" : ""}`} style={{ backgroundColor: hex }} />)}</div>
           </div>
-          <div className="mb-3 mt-6 flex items-center justify-between"><p className="text-sm font-semibold">Taille : {selectedSize}</p><button className="text-xs text-muted underline underline-offset-2">Guide des tailles</button></div>
-          <div className="flex flex-wrap gap-2">{product.sizes.map((item) => <button key={item} onClick={() => setSize(item)} aria-pressed={selectedSize === item} className={`min-w-12 rounded border px-3 py-2 text-sm ${selectedSize === item ? "border-ink bg-ink text-white" : "border-line hover:border-ink"}`}>{item}</button>)}</div>
-          <p className={`mt-4 flex items-center gap-2 text-xs font-medium ${product.stock > 0 ? "text-emerald-700" : "text-brand"}`}><span className={`h-2 w-2 rounded-full ${product.stock > 0 ? "bg-emerald-600" : "bg-brand"}`} />{product.stock > 0 ? `En stock · Plus que ${product.stock} pièces` : "Actuellement épuisé"}</p>
+          {sizes.length > 0 && <><div className="mb-3 mt-6 flex items-center justify-between"><p className="text-sm font-semibold">{product.productType === "shoes" ? "Pointure" : "Taille"} : {selectedSize}</p><button className="text-xs text-muted underline underline-offset-2">Guide des tailles</button></div>
+          <div className="flex flex-wrap gap-2">{sizes.map((item) => {
+            const matchingVariant = colorVariants.find((variant) => variant.size === item);
+            const unavailable = Boolean(product.variants?.length) && (matchingVariant?.stock ?? 0) <= 0;
+            return <button key={item} disabled={unavailable} onClick={() => { setSize(item); setQuantity(1); }} aria-pressed={selectedSize === item} className={`min-w-12 rounded border px-3 py-2 text-sm ${selectedSize === item ? "border-ink bg-ink text-white" : "border-line hover:border-ink"} disabled:cursor-not-allowed disabled:opacity-35 disabled:line-through`}>{item}</button>;
+          })}</div></>}
+          <p className={`mt-4 flex items-center gap-2 text-xs font-medium ${selectedStock > 0 ? "text-emerald-700" : "text-brand"}`}><span className={`h-2 w-2 rounded-full ${selectedStock > 0 ? "bg-emerald-600" : "bg-brand"}`} />{selectedStock > 0 ? `En stock · ${selectedStock} disponible(s)` : "Cette variante est épuisée"}</p>
           <div className="mt-5 flex gap-3">
             <div className="flex h-12 items-center rounded border border-line">
-              <button onClick={() => setQuantity((current) => Math.max(1, current - 1))} aria-label="Diminuer la quantité" className="px-3"><Minus className="h-4 w-4" /></button><span className="w-7 text-center text-sm">{quantity}</span><button onClick={() => setQuantity((current) => Math.min(product.stock || 1, current + 1))} aria-label="Augmenter la quantité" className="px-3"><Plus className="h-4 w-4" /></button>
+              <button onClick={() => setQuantity((current) => Math.max(1, current - 1))} aria-label="Diminuer la quantité" className="px-3"><Minus className="h-4 w-4" /></button><span className="w-7 text-center text-sm">{quantity}</span><button disabled={quantity >= selectedStock} onClick={() => setQuantity((current) => Math.min(selectedStock, current + 1))} aria-label="Augmenter la quantité" className="px-3 disabled:opacity-40"><Plus className="h-4 w-4" /></button>
             </div>
-            <button disabled={product.stock === 0} onClick={() => { addToCart(product.slug, selectedSize, selectedColor || product.color, quantity); navigate("/panier"); }} className="btn btn-primary h-12 flex-1">{product.stock === 0 ? "Indisponible" : "Ajouter au panier"} <ShoppingBag className="h-4 w-4" /></button>
+            <button disabled={selectedStock === 0 || (Boolean(product.variants?.length) && !selectedVariant)} onClick={() => { addToCart(product, selectedVariant?.id, selectedSize, selectedColor.name, quantity); navigate("/panier"); }} className="btn btn-primary h-12 flex-1">{selectedStock === 0 ? "Indisponible" : "Ajouter au panier"} <ShoppingBag className="h-4 w-4" /></button>
             <button onClick={() => toggleFavorite(product.slug)} aria-label={favorites.includes(product.slug) ? "Retirer des favoris" : "Ajouter aux favoris"} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-line hover:border-ink"><Heart className={`h-5 w-5 ${favorites.includes(product.slug) ? "fill-brand text-brand" : ""}`} /></button>
           </div>
           <div className="mt-6 grid grid-cols-3 divide-x divide-line border-y border-line py-4">
@@ -505,13 +590,13 @@ function ProductPage({ products, addToCart, favorites, toggleFavorite }: { produ
         </section>
       </div>
       <section className="mt-16"><h2 className="section-title mb-7">Vous aimerez aussi</h2><ProductGrid products={products.filter((item) => item.category === product.category && item.slug !== product.slug).slice(0, 4)} favorites={favorites} toggleFavorite={toggleFavorite} /></section>
-      {zoomOpen && <div role="dialog" aria-modal="true" aria-label="Photo agrandie" onClick={() => setZoomOpen(false)} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-5"><button onClick={() => setZoomOpen(false)} aria-label="Fermer" className="absolute right-5 top-5 rounded-full bg-white p-2"><X className="h-5 w-5" /></button><img src={images[activeImage]} alt={product.name} className="max-h-full max-w-full object-contain" /></div>}
+      {zoomOpen && <div role="dialog" aria-modal="true" aria-label="Photo agrandie" onClick={() => setZoomOpen(false)} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-5"><button onClick={() => setZoomOpen(false)} aria-label="Fermer" className="absolute right-5 top-5 rounded-full bg-white p-2"><X className="h-5 w-5" /></button><img src={visibleImages[activeImage] ?? visibleImages[0]} alt={product.name} className="max-h-full max-w-full object-contain" /></div>}
     </main>
   );
 }
 
-function CartPage({ products, cart, updateQuantity, removeFromCart, clearCart }: { products: DemoProduct[]; cart: CartLine[]; updateQuantity: (slug: string, size: string, color: string, delta: number) => void; removeFromCart: (slug: string, size: string, color: string) => void; clearCart: () => void }) {
-  const total = cart.reduce((sum, line) => sum + (products.find((product) => product.slug === line.slug)?.price ?? 0) * line.quantity, 0);
+function CartPage({ products, cart, updateQuantity, removeFromCart, clearCart }: { products: DemoProduct[]; cart: CartLine[]; updateQuantity: (line: CartLine, delta: number) => void; removeFromCart: (line: CartLine) => void; clearCart: () => void }) {
+  const total = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const freeShippingThreshold = 200;
   const remainingForFreeShipping = Math.max(0, freeShippingThreshold - total);
   return (
@@ -525,24 +610,24 @@ function CartPage({ products, cart, updateQuantity, removeFromCart, clearCart }:
             <div className="divide-y divide-line border-y border-line">
               {cart.map((line) => {
                 const product = products.find((item) => item.slug === line.slug);
-                if (!product) return null;
-                return <article key={`${line.slug}:${line.size}:${line.color}`} className="flex gap-4 py-5 sm:gap-6">
-                  <Link to={`/produit/${product.slug}`} className="h-32 w-24 shrink-0 overflow-hidden rounded bg-soft sm:h-36 sm:w-28"><img src={product.image} alt={product.name} className="h-full w-full object-cover" /></Link>
+                const productName = product?.name ?? line.name;
+                return <article key={`${line.productId}:${line.variantId ?? `${line.color}:${line.size}`}`} className="flex gap-4 py-5 sm:gap-6">
+                  <Link to={`/produit/${line.slug}`} className="h-32 w-24 shrink-0 overflow-hidden rounded bg-soft sm:h-36 sm:w-28"><img src={line.image} alt={productName} className="h-full w-full object-cover" /></Link>
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <p className="text-[10px] uppercase tracking-widest text-muted">{product.brand}</p>
-                    <Link to={`/produit/${product.slug}`} className="mt-1 truncate text-sm font-semibold hover:text-brand">{product.name}</Link>
-                    <p className="mt-1 text-xs text-muted">Couleur : {line.color}<span className="mx-2">·</span>Taille : {line.size}</p>
-                    <p className="mt-1 text-xs text-muted">{money(product.price)} / unité</p>
+                    <p className="text-[10px] uppercase tracking-widest text-muted">{product?.brand ?? line.brand}</p>
+                    <Link to={`/produit/${line.slug}`} className="mt-1 truncate text-sm font-semibold hover:text-brand">{productName}</Link>
+                    <p className="mt-1 text-xs text-muted">Couleur : {line.color}{line.size && <><span className="mx-2">·</span>{product?.productType === "shoes" ? "Pointure" : "Taille"} : {line.size}</>}</p>
+                    <p className="mt-1 text-xs text-muted">{money(line.price)} / unité</p>
                     <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-3">
                       <div className="flex h-9 items-center rounded border border-line">
-                        <button onClick={() => updateQuantity(line.slug, line.size, line.color, -1)} aria-label="Diminuer la quantité" className="px-2.5"><Minus className="h-3 w-3" /></button>
+                        <button onClick={() => updateQuantity(line, -1)} aria-label="Diminuer la quantité" className="px-2.5"><Minus className="h-3 w-3" /></button>
                         <span className="w-7 text-center text-sm">{line.quantity}</span>
-                        <button onClick={() => updateQuantity(line.slug, line.size, line.color, 1)} aria-label="Augmenter la quantité" className="px-2.5"><Plus className="h-3 w-3" /></button>
+                        <button onClick={() => updateQuantity(line, 1)} aria-label="Augmenter la quantité" className="px-2.5"><Plus className="h-3 w-3" /></button>
                       </div>
-                      <span className="text-sm font-semibold">{money(product.price * line.quantity)}</span>
+                      <span className="text-sm font-semibold">{money(line.price * line.quantity)}</span>
                     </div>
                   </div>
-                  <button onClick={() => removeFromCart(line.slug, line.size, line.color)} aria-label={`Supprimer ${product.name}`} className="h-fit text-muted hover:text-brand"><X className="h-4 w-4" /></button>
+                  <button onClick={() => removeFromCart(line)} aria-label={`Supprimer ${productName}`} className="h-fit text-muted hover:text-brand"><X className="h-4 w-4" /></button>
                 </article>;
               })}
             </div>
@@ -553,11 +638,10 @@ function CartPage({ products, cart, updateQuantity, removeFromCart, clearCart }:
             <div className="mt-4 divide-y divide-line">
               {cart.map((line) => {
                 const product = products.find((item) => item.slug === line.slug);
-                if (!product) return null;
-                return <div key={`${line.slug}:${line.size}:${line.color}`} className="flex items-center gap-3 py-3">
-                  <img src={product.image} alt="" className="h-14 w-12 rounded bg-soft object-cover" />
-                  <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{product.name}</p><p className="mt-1 text-[10px] text-muted">{line.quantity} × {money(product.price)} · {line.size} · {line.color}</p></div>
-                  <span className="text-xs font-semibold">{money(product.price * line.quantity)}</span>
+                return <div key={`${line.productId}:${line.variantId ?? `${line.color}:${line.size}`}`} className="flex items-center gap-3 py-3">
+                  <img src={line.image} alt="" className="h-14 w-12 rounded bg-soft object-cover" />
+                  <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{product?.name ?? line.name}</p><p className="mt-1 text-[10px] text-muted">{line.quantity} × {money(line.price)} · {line.size} · {line.color}</p></div>
+                  <span className="text-xs font-semibold">{money(line.price * line.quantity)}</span>
                 </div>;
               })}
             </div>
@@ -569,18 +653,60 @@ function CartPage({ products, cart, updateQuantity, removeFromCart, clearCart }:
               <p className="mt-2 text-xs text-emerald-700">{remainingForFreeShipping === 0 ? "Vous bénéficiez de la livraison gratuite !" : `Plus que ${money(remainingForFreeShipping)} pour la livraison gratuite`}</p>
             </div>
             <Link to="/commande" className="btn btn-primary w-full">Passer la commande <ArrowRight className="h-4 w-4" /></Link>
-            <p className="mt-3 text-center text-[11px] text-muted">Maquette de commande · Aucune commande ne sera envoyée.</p>
+            <p className="mt-3 text-center text-[11px] text-muted">Votre commande sera enregistrée et visible dans votre espace client.</p>
           </aside>
         </div>}
     </main>
   );
 }
 
-function CheckoutPage({ products, cart }: { products: DemoProduct[]; cart: CartLine[] }) {
+function CheckoutPage({ products, cart, clearCart }: { products: DemoProduct[]; cart: CartLine[]; clearCart: () => void }) {
   const [delivery, setDelivery] = useState("home");
   const [payment, setPayment] = useState("cash");
-  const subtotal = cart.reduce((sum, line) => sum + (products.find((product) => product.slug === line.slug)?.price ?? 0) * line.quantity, 0);
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [accepted, setAccepted] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const navigate = useNavigate();
+  const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const steps = ["Livraison", "Expédition", "Paiement", "Confirmation"];
+
+  async function confirmOrder() {
+    setNotice("");
+    if (!cart.length || !address.trim() || !phone.trim() || !accepted) {
+      setNotice("Renseignez le téléphone et l’adresse, puis acceptez les conditions de vente.");
+      return;
+    }
+    if (!getAuthSession()) {
+      setNotice("Connectez-vous avant de confirmer votre commande.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await apiRequest("/orders", {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: {
+          items: cart.map((line) => ({
+            product: line.productId,
+            ...(line.variantId ? { variant: line.variantId } : {}),
+            quantity: line.quantity,
+          })),
+          shippingAddress: address.trim(),
+          phone: phone.trim(),
+        },
+      });
+      clearCart();
+      setConfirmed(true);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "La création de la commande a échoué.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <main className="container-x mb-20 mt-8">
@@ -615,8 +741,8 @@ function CheckoutPage({ products, cart }: { products: DemoProduct[]; cart: CartL
               <label className="text-xs font-semibold">Prénom<input autoComplete="given-name" placeholder="Votre prénom" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
               <label className="text-xs font-semibold">Nom<input autoComplete="family-name" placeholder="Votre nom" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
               <label className="text-xs font-semibold">Adresse e-mail<input type="email" autoComplete="email" placeholder="vous@exemple.com" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
-              <label className="text-xs font-semibold">Téléphone<input type="tel" autoComplete="tel" placeholder="+216 XX XXX XXX" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
-              <label className="text-xs font-semibold sm:col-span-2">Adresse<input autoComplete="street-address" placeholder="Numéro et nom de rue" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
+              <label className="text-xs font-semibold">Téléphone<input required type="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+216 XX XXX XXX" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
+              <label className="text-xs font-semibold sm:col-span-2">Adresse complète<input required autoComplete="street-address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Numéro, rue, ville et code postal" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
               <label className="text-xs font-semibold">Ville<input autoComplete="address-level2" placeholder="Votre ville" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
               <label className="text-xs font-semibold">Code postal<input autoComplete="postal-code" placeholder="0000" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
             </div>
@@ -656,9 +782,9 @@ function CheckoutPage({ products, cart }: { products: DemoProduct[]; cart: CartL
               <div className="flex-1">
                 <h2 className="font-heading text-lg font-bold">Confirmation</h2>
                 <p className="mt-1 text-xs leading-5 text-muted">Vérifiez vos informations et votre panier avant de confirmer.</p>
-                <label className="mt-4 flex items-start gap-2 text-xs leading-5 text-muted"><input type="checkbox" className="mt-1 accent-brand" />J’accepte les conditions générales de vente et la politique de confidentialité.</label>
-                <button type="button" className="btn btn-primary mt-5 w-full rounded-xl py-3.5 sm:w-auto">Confirmer la commande <ArrowRight className="h-4 w-4" /></button>
-                <p className="mt-3 text-[10px] text-muted">Maquette visuelle uniquement · Aucune commande ne sera transmise.</p>
+                <label className="mt-4 flex items-start gap-2 text-xs leading-5 text-muted"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-1 accent-brand" />J’accepte les conditions générales de vente et la politique de confidentialité.</label>
+                {notice && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-xs text-red-800">{notice}{!getAuthSession() && <button type="button" onClick={() => navigate("/compte")} className="ml-1 font-semibold underline">Se connecter</button>}</p>}
+                {confirmed ? <div role="status" className="mt-5 rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800"><p>Commande confirmée. Merci pour votre achat !</p><Link to="/compte" className="mt-2 inline-flex items-center gap-1 text-xs underline">Suivre ma commande<ArrowRight className="h-3.5 w-3.5" /></Link></div> : <button type="button" disabled={submitting} onClick={() => void confirmOrder()} className="btn btn-primary mt-5 w-full rounded-xl py-3.5 disabled:opacity-50 sm:w-auto">{submitting ? "Envoi…" : "Confirmer la commande"} <ArrowRight className="h-4 w-4" /></button>}
               </div>
             </div>
           </section>
@@ -669,16 +795,15 @@ function CheckoutPage({ products, cart }: { products: DemoProduct[]; cart: CartL
           {cart.length ? <div className="mt-4 max-h-[340px] divide-y divide-line overflow-y-auto">
             {cart.map((line) => {
               const product = products.find((item) => item.slug === line.slug);
-              if (!product) return null;
               return <div key={`${line.slug}:${line.size}:${line.color}`} className="flex gap-3 py-3">
-                <div className="relative h-16 w-14 shrink-0 overflow-hidden rounded-lg bg-soft"><img src={product.image} alt="" className="h-full w-full object-cover" /><span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-ink px-1 text-[9px] font-bold text-white">{line.quantity}</span></div>
-                <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{product.name}</p><p className="mt-1 text-[10px] text-muted">{line.size} · {line.color}</p><p className="mt-1 text-[10px] text-muted">{money(product.price)} / unité</p></div>
-                <span className="whitespace-nowrap text-xs font-semibold">{money(product.price * line.quantity)}</span>
+                <div className="relative h-16 w-14 shrink-0 overflow-hidden rounded-lg bg-soft"><img src={line.image} alt="" className="h-full w-full object-cover" /><span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-ink px-1 text-[9px] font-bold text-white">{line.quantity}</span></div>
+                <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{product?.name ?? line.name}</p><p className="mt-1 text-[10px] text-muted">{line.size} · {line.color}</p><p className="mt-1 text-[10px] text-muted">{money(line.price)} / unité</p></div>
+                <span className="whitespace-nowrap text-xs font-semibold">{money(line.price * line.quantity)}</span>
               </div>;
             })}
           </div> : <div className="mt-4 rounded-xl bg-soft p-4 text-center"><ShoppingBag className="mx-auto h-6 w-6 text-muted" /><p className="mt-2 text-xs text-muted">Votre panier est vide.</p><Link to="/catalogue" className="mt-2 inline-block text-xs font-semibold text-brand hover:underline">Découvrir la boutique</Link></div>}
           <div className="mt-4 space-y-3 border-t border-line pt-4 text-xs"><div className="flex justify-between"><span className="text-muted">Sous-total</span><span className="font-semibold">{money(subtotal)}</span></div><div className="flex justify-between"><span className="text-muted">Livraison</span><span className="font-medium text-muted">Calculée à la confirmation</span></div><div className="flex justify-between border-t border-line pt-3 text-sm font-bold"><span>Total estimé</span><span>{money(subtotal)}</span></div></div>
-          <div className="mt-5 flex items-center gap-2 rounded-xl bg-soft/80 p-3 text-[10px] leading-4 text-muted"><ShieldCheck className="h-4 w-4 shrink-0 text-brand" />Vos informations sont présentées ici à titre de démonstration uniquement.</div>
+          <div className="mt-5 flex items-center gap-2 rounded-xl bg-soft/80 p-3 text-[10px] leading-4 text-muted"><ShieldCheck className="h-4 w-4 shrink-0 text-brand" />Votre prix est recalculé et le stock vérifié par le serveur lors de la confirmation.</div>
         </aside>
       </div>
     </main>
@@ -698,11 +823,97 @@ function AccountPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [showPassword, setShowPassword] = useState(false);
   const [notice, setNotice] = useState("");
+  const [session, setSession] = useState<AuthSession | null>(() => getAuthSession());
+  const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const isSignup = mode === "signup";
+  const navigate = useNavigate();
 
-  function submit(event: FormEvent) {
+  useEffect(() => {
+    if (!session || session.user.role !== "user") {
+      setOrders([]);
+      setOrdersLoading(false);
+      return;
+    }
+    let active = true;
+    setOrdersLoading(true);
+    setOrdersError("");
+    apiRequest<ApiOrder[]>("/orders/mine")
+      .then((result) => { if (active) setOrders(result); })
+      .catch((error: unknown) => {
+        if (active) setOrdersError(error instanceof Error ? error.message : "Impossible de charger vos commandes.");
+      })
+      .finally(() => { if (active) setOrdersLoading(false); });
+    return () => { active = false; };
+  }, [session?.token, session?.user.id, session?.user.role]);
+
+  async function submit(event: FormEvent) {
     event.preventDefault();
-    setNotice("Cette maquette n’est pas encore connectée à un service d’authentification.");
+    setNotice("");
+    try {
+      const session = await apiRequest<AuthSession>(`/auth/${isSignup ? "register" : "login"}`, {
+        method: "POST",
+        body: isSignup ? { name, email, password } : { email, password },
+      });
+      saveAuthSession(session);
+      setSession(session);
+      if (session.user.role === "admin") {
+        navigate("/admin");
+      } else {
+        setNotice("");
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "La connexion a échoué.");
+    }
+  }
+
+  if (session?.user.role === "user") {
+    return (
+      <main className="container-x mb-20 mt-10">
+        <section className="mx-auto max-w-4xl">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-ink p-6 text-white shadow-xl sm:p-8">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand">Mon espace Haffeli</p>
+              <h1 className="mt-2 font-heading text-2xl font-bold sm:text-3xl">Bonjour, {session.user.name}</h1>
+              <p className="mt-1 text-sm text-white/65">{session.user.email}</p>
+            </div>
+            <button type="button" onClick={() => { clearAuthSession(); setSession(null); setOrders([]); }} className="rounded-xl border border-white/20 px-4 py-2.5 text-xs font-semibold transition hover:bg-white/10">Déconnexion</button>
+          </div>
+          <div className="mt-8 flex items-end justify-between gap-3">
+            <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand">Votre activité</p><h2 className="mt-1 font-heading text-2xl font-bold">Mes commandes</h2></div>
+            <Link to="/catalogue" className="text-xs font-semibold text-brand hover:underline">Continuer mes achats</Link>
+          </div>
+          {ordersLoading && <p role="status" className="mt-5 rounded-2xl border border-line bg-white p-6 text-sm text-muted">Chargement de vos commandes…</p>}
+          {ordersError && <p role="alert" className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{ordersError}</p>}
+          {!ordersLoading && !ordersError && !orders.length && <div className="mt-5 rounded-2xl border border-line bg-white p-8 text-center shadow-sm"><ShoppingBag className="mx-auto h-8 w-8 text-muted" /><p className="mt-3 font-semibold">Aucune commande pour le moment</p><p className="mt-1 text-sm text-muted">Vos commandes apparaîtront ici après confirmation.</p><Link to="/catalogue" className="btn btn-primary mt-5">Découvrir la boutique<ArrowRight className="h-4 w-4" /></Link></div>}
+          <div className="mt-5 space-y-4">
+            {orders.map((order) => (
+              <article key={order._id} className="rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
+                  <div><p className="text-xs font-bold">Commande {order.orderNumber ?? "en cours de migration"}</p><time className="mt-1 block text-xs text-muted" dateTime={order.createdAt}>{new Date(order.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</time></div>
+                  <span className="rounded-full bg-brand/10 px-3 py-1.5 text-[10px] font-bold text-brand">{order.status}</span>
+                </div>
+                <div className="divide-y divide-line">
+                  {order.items.map((item, index) => {
+                    const productName = item.name ?? (item.product && typeof item.product === "object" ? item.product.name : "Article");
+                    return <div key={`${order._id}-${index}`} className="flex items-center gap-3 py-3">
+                      {item.image ? <img src={item.image} alt="" className="h-14 w-12 rounded-lg bg-soft object-cover" /> : <span className="flex h-14 w-12 items-center justify-center rounded-lg bg-soft"><ShoppingBag className="h-4 w-4 text-muted" /></span>}
+                      <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{productName}</p><p className="mt-1 text-[10px] text-muted">{[item.color, item.size, `Qté : ${item.quantity}`].filter(Boolean).join(" · ")}</p></div>
+                      <p className="text-xs font-semibold">{money(item.price * item.quantity)}</p>
+                    </div>;
+                  })}
+                </div>
+                <div className="flex justify-between border-t border-line pt-4 text-sm"><span className="text-muted">Total de la commande</span><strong>{money(order.total)}</strong></div>
+              </article>
+            ))}
+          </div>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -744,15 +955,15 @@ function AccountPage() {
             <div className="my-6 flex items-center gap-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted"><span className="h-px flex-1 bg-line" />ou par e-mail<span className="h-px flex-1 bg-line" /></div>
 
             <form onSubmit={submit} className="space-y-4">
-              {isSignup && <label className="block text-xs font-semibold">Nom complet<div className="mt-1.5 flex items-center rounded-xl border border-line bg-white px-3 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/10"><UserRound className="h-4 w-4 shrink-0 text-muted" /><input required autoComplete="name" placeholder="Votre nom" className="w-full bg-transparent px-3 py-3 text-sm outline-none placeholder:text-muted/70" /></div></label>}
-              <label className="block text-xs font-semibold">Adresse e-mail<div className="mt-1.5 flex items-center rounded-xl border border-line bg-white px-3 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/10"><Mail className="h-4 w-4 shrink-0 text-muted" /><input required type="email" autoComplete="email" placeholder="vous@exemple.com" className="w-full bg-transparent px-3 py-3 text-sm outline-none placeholder:text-muted/70" /></div></label>
-              <label className="block text-xs font-semibold">Mot de passe<div className="mt-1.5 flex items-center rounded-xl border border-line bg-white px-3 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/10"><LockKeyhole className="h-4 w-4 shrink-0 text-muted" /><input required type={showPassword ? "text" : "password"} minLength={8} autoComplete={isSignup ? "new-password" : "current-password"} placeholder="8 caractères minimum" className="w-full bg-transparent px-3 py-3 text-sm outline-none placeholder:text-muted/70" /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"} className="rounded-md p-1 text-muted hover:text-ink">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></label>
+              {isSignup && <label className="block text-xs font-semibold">Nom complet<div className="mt-1.5 flex items-center rounded-xl border border-line bg-white px-3 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/10"><UserRound className="h-4 w-4 shrink-0 text-muted" /><input required value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" placeholder="Votre nom" className="w-full bg-transparent px-3 py-3 text-sm outline-none placeholder:text-muted/70" /></div></label>}
+              <label className="block text-xs font-semibold">Adresse e-mail<div className="mt-1.5 flex items-center rounded-xl border border-line bg-white px-3 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/10"><Mail className="h-4 w-4 shrink-0 text-muted" /><input required value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" placeholder="vous@exemple.com" className="w-full bg-transparent px-3 py-3 text-sm outline-none placeholder:text-muted/70" /></div></label>
+              <label className="block text-xs font-semibold">Mot de passe<div className="mt-1.5 flex items-center rounded-xl border border-line bg-white px-3 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/10"><LockKeyhole className="h-4 w-4 shrink-0 text-muted" /><input required value={password} onChange={(event) => setPassword(event.target.value)} type={showPassword ? "text" : "password"} minLength={8} autoComplete={isSignup ? "new-password" : "current-password"} placeholder="8 caractères minimum" className="w-full bg-transparent px-3 py-3 text-sm outline-none placeholder:text-muted/70" /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"} className="rounded-md p-1 text-muted hover:text-ink">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div></label>
               {isSignup && <label className="flex items-start gap-2 text-xs leading-5 text-muted"><input required type="checkbox" className="mt-1 accent-brand" />J’accepte les conditions d’utilisation et la politique de confidentialité.</label>}
               {!isSignup && <div className="flex items-center justify-between gap-3 text-xs"><label className="flex items-center gap-2 text-muted"><input type="checkbox" className="accent-brand" />Se souvenir de moi</label><button type="button" onClick={() => setNotice("La récupération du mot de passe sera disponible avec l’authentification.")} className="font-semibold text-brand hover:underline">Mot de passe oublié ?</button></div>}
               <button type="submit" className="btn btn-primary w-full rounded-xl py-3.5">{isSignup ? "Créer mon compte" : "Se connecter"}<ArrowRight className="h-4 w-4" /></button>
             </form>
             {notice && <p role="status" className="mt-4 rounded-xl border border-brand/20 bg-brand/5 px-3 py-2.5 text-xs leading-5 text-brand">{notice}</p>}
-            <p className="mt-5 text-center text-[10px] leading-5 text-muted">Maquette visuelle uniquement · Aucun compte ni connexion n’est encore activé.</p>
+            <p className="mt-5 text-center text-[10px] leading-5 text-muted">La connexion utilise votre compte Haffeli Shop.</p>
             <p className="mt-5 text-center text-xs text-muted"><Link to="/catalogue" className="font-semibold text-ink hover:text-brand">Continuer mes achats</Link></p>
           </div>
         </div>
@@ -762,14 +973,20 @@ function AccountPage() {
 }
 
 export default function App() {
-  const [products, setProducts] = useState<DemoProduct[]>(() => readStorage("haffeli-products", demoProducts));
-  const [orders, setOrders] = useState<DemoOrder[]>(() => {
-    const savedOrders = readStorage<DemoOrder[]>("haffeli-orders", []);
-    return savedOrders.length ? savedOrders : demoOrders;
-  });
+  const [products, setProducts] = useState<DemoProduct[]>([]);
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState("");
+  const [categoriesError, setCategoriesError] = useState("");
   const [cart, setCart] = useState<CartLine[]>(() => readStorage<CartLine[]>("nova-cart", []).map((line) => ({
     ...line,
-    color: line.color ?? products.find((product) => product.slug === line.slug)?.color ?? "Noir",
+    productId: line.productId ?? "",
+    price: line.price ?? 0,
+    image: line.image ?? "",
+    name: line.name ?? "",
+    brand: line.brand ?? "Nike",
+    color: line.color ?? "Standard",
+    size: line.size ?? "",
   })));
   const [favorites, setFavorites] = useState<string[]>(() => readStorage("nova-favorites", []));
   const navigate = useNavigate();
@@ -781,50 +998,92 @@ export default function App() {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [location.pathname, location.search]);
 
-  useEffect(() => { localStorage.setItem("haffeli-products", JSON.stringify(products)); }, [products]);
-  useEffect(() => { localStorage.setItem("haffeli-orders", JSON.stringify(orders)); }, [orders]);
+  useEffect(() => {
+    if (/^\/admin(?:\/|$)/.test(location.pathname)) return;
+    let active = true;
+    setProductsLoading(true);
+    apiRequest<ApiProduct[]>("/products")
+      .then((result) => {
+        if (!active) return;
+        const mapped = result.map(toStoreProduct);
+        setProducts(mapped);
+        setProductsError("");
+        setCart((current) => current.map((line) => {
+          const product = mapped.find((item) => item.slug === line.slug || item.productId === line.productId);
+          if (!product) return line;
+          const color = product.colors?.find((item) => item.name === line.color);
+          const variant = product.variants?.find((item) => item.colorId === color?.id && item.size === line.size);
+          return {
+            ...line,
+            productId: product.productId ?? String(product.id),
+            variantId: variant?.id ?? line.variantId,
+            price: variant?.price ?? product.price,
+            image: color?.images[0] ?? product.image,
+            name: product.name,
+            brand: product.brand,
+          };
+        }));
+      })
+      .catch((error: unknown) => {
+        if (active) setProductsError(error instanceof Error ? error.message : "Impossible de charger les produits.");
+      })
+      .finally(() => {
+        if (active) setProductsLoading(false);
+      });
+    return () => { active = false; };
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (/^\/admin(?:\/|$)/.test(location.pathname)) return;
+    let active = true;
+    apiRequest<ApiCategory[]>("/categories")
+      .then((result) => {
+        if (!active) return;
+        setCategories(result);
+        setCategoriesError("");
+      })
+      .catch((error: unknown) => {
+        if (active) setCategoriesError(error instanceof Error ? error.message : "Impossible de charger les catégories.");
+      });
+    return () => { active = false; };
+  }, [location.pathname]);
+
   useEffect(() => { localStorage.setItem("nova-cart", JSON.stringify(cart)); }, [cart]);
   useEffect(() => { localStorage.setItem("nova-favorites", JSON.stringify(favorites)); }, [favorites]);
 
-  function saveProduct(product: DemoProduct) {
-    setProducts((current) => {
-      if (product.id) return current.map((item) => item.id === product.id ? product : item);
-      const id = Math.max(0, ...current.map((item) => item.id)) + 1;
-      return [...current, { ...product, id }];
-    });
-  }
-  function archiveProduct(product: DemoProduct) {
-    setProducts((current) => current.map((item) => item.id === product.id ? { ...item, archived: !item.archived } : item));
-  }
-  function updateOrderStatus(id: string, status: DemoOrder["status"]) {
-    setOrders((current) => current.map((order) => order.id === id ? { ...order, status } : order));
-  }
-
   if (/^\/admin(?:\/|$)/.test(location.pathname)) {
-    return <AdminApp
-      products={products}
-      orders={orders}
-      onSaveProduct={saveProduct}
-      onArchiveProduct={archiveProduct}
-      onDeleteProduct={(id) => setProducts((current) => current.filter((item) => item.id !== id))}
-      onUpdateOrderStatus={updateOrderStatus}
-    />;
+    return <AdminApp />;
   }
 
   function toggleFavorite(slug: string) {
     setFavorites((current) => current.includes(slug) ? current.filter((item) => item !== slug) : [...current, slug]);
   }
-  function addToCart(slug: string, size: string, color: string, quantity: number) {
+  function addToCart(product: DemoProduct, variantId: string | undefined, size: string, color: string, quantity: number) {
+    const variant = product.variants?.find((item) => item.id === variantId);
+    const colorData = product.colors?.find((item) => item.name === color);
+    const line: CartLine = {
+      slug: product.slug,
+      productId: product.productId ?? String(product.id),
+      variantId,
+      size,
+      color,
+      quantity,
+      price: variant?.price ?? product.price,
+      image: colorData?.images[0] ?? product.image,
+      name: product.name,
+      brand: product.brand,
+      sku: variant?.sku ?? product.sku,
+    };
     setCart((current) => {
-      const found = current.find((line) => line.slug === slug && line.size === size && line.color === color);
-      return found ? current.map((line) => line === found ? { ...line, quantity: line.quantity + quantity } : line) : [...current, { slug, size, color, quantity }];
+      const found = current.find((item) => item.productId === line.productId && item.variantId === line.variantId);
+      return found ? current.map((item) => item === found ? { ...item, quantity: item.quantity + quantity } : item) : [...current, line];
     });
   }
-  function updateQuantity(slug: string, size: string, color: string, delta: number) {
-    setCart((current) => current.flatMap((line) => line.slug === slug && line.size === size && line.color === color ? (line.quantity + delta <= 0 ? [] : [{ ...line, quantity: line.quantity + delta }]) : [line]));
+  function updateQuantity(line: CartLine, delta: number) {
+    setCart((current) => current.flatMap((item) => item.productId === line.productId && item.variantId === line.variantId ? (item.quantity + delta <= 0 ? [] : [{ ...item, quantity: item.quantity + delta }]) : [item]));
   }
-  function removeFromCart(slug: string, size: string, color: string) {
-    setCart((current) => current.filter((line) => line.slug !== slug || line.size !== size || line.color !== color));
+  function removeFromCart(line: CartLine) {
+    setCart((current) => current.filter((item) => item.productId !== line.productId || item.variantId !== line.variantId));
   }
   function search(value: string) {
     const query = value.trim();
@@ -833,20 +1092,23 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <Header cartCount={cartCount} favoriteCount={favorites.length} search={search} />
+      {productsError && <p role="alert" className="container-x mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">Erreur de chargement du catalogue : {productsError}</p>}
+      {categoriesError && <p role="alert" className="container-x mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">Erreur de chargement des catégories : {categoriesError}</p>}
+      {productsLoading && <p role="status" className="container-x py-12 text-center text-sm text-muted">Chargement du catalogue…</p>}
       <Routes>
-        <Route path="/" element={<HomePage products={activeProducts} favorites={favorites} toggleFavorite={toggleFavorite} />} />
-        <Route path="/catalogue" element={<CatalogPage products={activeProducts} favorites={favorites} toggleFavorite={toggleFavorite} />} />
-        <Route path="/nouveautes" element={<CatalogPage products={activeProducts} favorites={favorites} toggleFavorite={toggleFavorite} />} />
-        <Route path="/promotions" element={<CatalogPage products={activeProducts} favorites={favorites} toggleFavorite={toggleFavorite} />} />
-        <Route path="/favoris" element={<CatalogPage products={activeProducts} favorites={favorites} toggleFavorite={toggleFavorite} />} />
+        <Route path="/" element={productsLoading ? <p role="status" className="container-x py-12 text-center text-sm text-muted">Chargement du catalogue…</p> : <HomePage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
+        <Route path="/catalogue" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
+        <Route path="/nouveautes" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
+        <Route path="/promotions" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
+        <Route path="/favoris" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
         <Route path="/compte" element={<AccountPage />} />
         <Route path="/produit/:slug" element={<ProductPage products={activeProducts} addToCart={addToCart} favorites={favorites} toggleFavorite={toggleFavorite} />} />
         <Route path="/panier" element={<CartPage products={products} cart={cart} updateQuantity={updateQuantity} removeFromCart={removeFromCart} clearCart={() => setCart([])} />} />
-        <Route path="/commande" element={<CheckoutPage products={products} cart={cart} />} />
+        <Route path="/commande" element={<CheckoutPage products={products} cart={cart} clearCart={() => setCart([])} />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <footer className="mt-20 border-t border-line bg-ink py-10 text-white">
-        <div className="container-x grid gap-8 sm:grid-cols-3"><div><Link to="/" className="font-heading text-xl font-semibold tracking-[0.14em] text-white">HAFFELI <span className="text-brand">SHOP</span></Link><p className="mt-2 max-w-xs text-sm text-white/65">Mode et élégance,<br />soigneusement sélectionnées.</p></div><div><h2 className="mb-3 text-sm font-semibold">Navigation</h2><div className="grid gap-2 text-xs text-white/65"><Link to="/" className="hover:text-white">Accueil</Link><Link to="/catalogue" className="hover:text-white">Boutique</Link><Link to="/nouveautes" className="hover:text-white">Nouveautés</Link><Link to="/promotions" className="hover:text-white">Promotions</Link><Link to="/admin" className="hover:text-white">Espace administration</Link></div></div><div><h2 className="mb-3 text-sm font-semibold">À propos</h2><div className="grid gap-2 text-xs text-white/65"><span>Notre histoire</span><span>Livraison & retours</span><span>Contact</span></div></div><p className="border-t border-white/20 pt-4 text-center text-[11px] text-white/55 sm:col-span-3">© 2026 Haffeli Shop. Boutique de démonstration React.</p></div>
+        <div className="container-x grid gap-8 sm:grid-cols-3"><div><Link to="/" className="font-heading text-xl font-semibold tracking-[0.14em] text-white">HAFFELI <span className="text-brand">SHOP</span></Link><p className="mt-2 max-w-xs text-sm text-white/65">Mode et élégance,<br />soigneusement sélectionnées.</p></div><div><h2 className="mb-3 text-sm font-semibold">Navigation</h2><div className="grid gap-2 text-xs text-white/65"><Link to="/" className="hover:text-white">Accueil</Link><Link to="/catalogue" className="hover:text-white">Boutique</Link><Link to="/nouveautes" className="hover:text-white">Nouveautés</Link><Link to="/promotions" className="hover:text-white">Promotions</Link><Link to="/admin/mouvements" className="hover:text-white">Panneau du solde · accès administrateur</Link></div></div><div><h2 className="mb-3 text-sm font-semibold">À propos</h2><div className="grid gap-2 text-xs text-white/65"><span>Notre histoire</span><span>Livraison & retours</span><span>Contact</span></div></div><p className="border-t border-white/20 pt-4 text-center text-[11px] text-white/55 sm:col-span-3">© 2026 Haffeli Shop. Boutique de démonstration React.</p></div>
       </footer>
     </div>
   );
