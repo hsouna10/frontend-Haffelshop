@@ -28,6 +28,7 @@ import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams, useS
 import type { DemoProduct } from "./lib/demo-data";
 import AdminApp from "./admin/AdminApp";
 import { apiRequest, clearAuthSession, getAuthSession, saveAuthSession, type ApiCategory, type ApiOrder, type ApiProduct, type AuthSession } from "./lib/api";
+import { handleInvalidField, showErrorAlert } from "./lib/alerts";
 
 type CartLine = {
   slug: string;
@@ -263,9 +264,9 @@ function ProductGrid({ products, favorites, toggleFavorite, columns = 4 }: { pro
 function HomePage({ products, categories, favorites, toggleFavorite }: { products: DemoProduct[]; categories: ApiCategory[]; favorites: string[]; toggleFavorite: (slug: string) => void }) {
   const [slide, setSlide] = useState(0);
   const slides = [
-    { image: "https://images.pexels.com/photos/3160389/pexels-photo-3160389.jpeg?auto=compress&cs=tinysrgb&w=2000", eyebrow: "Nouvelle collection", title: "Le style, version premium", text: "Des pièces intemporelles aux coupes affirmées, pensées pour sublimer votre garde-T-shirt.", cta: "Découvrir les nouveautés", href: "/nouveautes" },
-    { image: "https://images.pexels.com/photos/7871182/pexels-photo-7871182.jpeg?auto=compress&cs=tinysrgb&w=2000", eyebrow: "Sélection spéciale", title: "Les essentiels de saison", text: "Découvrez les pièces qui accompagnent chaque moment avec élégance.", cta: "Explorer la collection", href: "/catalogue" },
-    { image: "https://images.pexels.com/photos/36976906/pexels-photo-36976906.jpeg?auto=compress&cs=tinysrgb&w=2000", eyebrow: "Nouvelle saison", title: "L'élégance au quotidien", text: "Des silhouettes modernes et des matières choisies pour vous accompagner partout.", cta: "Voir la sélection", href: "/catalogue" },
+    { image: "/nike-hero-1.png", eyebrow: "Nouvelle collection Nike", title: "Just Do It — Performance Premium", text: "Des sneakers et équipements Nike pensés pour ceux qui repoussent leurs limites chaque jour.", cta: "Découvrir les nouveautés", href: "/nouveautes" },
+    { image: "/nike-hero-2.png", eyebrow: "Collection Running Nike", title: "Courez plus vite. Plus loin.", text: "Les meilleures tenues Nike Running pour dominer chaque course, de la ville aux sentiers.", cta: "Explorer la collection", href: "/catalogue" },
+    { image: "/nike-hero-3.png", eyebrow: "Style Nike Lifestyle", title: "L'élégance sportswear au quotidien", text: "Le confort Nike rencontre le style : des pièces emblématiques pour sublimer chaque moment.", cta: "Voir la sélection", href: "/catalogue" },
   ];
   const selected = slides[slide];
   const categoryImages = [
@@ -568,11 +569,11 @@ function ProductPage({ products, addToCart, favorites, toggleFavorite }: { produ
             <div className="flex gap-3">{colors.map(({ id, name, hex }) => <button key={id || name} onClick={() => { setSelectedColorId(id); setSize(""); setQuantity(1); setActiveImage(0); }} aria-label={`Choisir ${name}`} aria-pressed={selectedColor.id === id} title={name} className={`h-9 w-9 rounded-full border border-black/15 ${selectedColor.id === id ? "ring-2 ring-brand ring-offset-2" : ""}`} style={{ backgroundColor: hex }} />)}</div>
           </div>
           {sizes.length > 0 && <><div className="mb-3 mt-6 flex items-center justify-between"><p className="text-sm font-semibold">{product.productType === "shoes" ? "Pointure" : "Taille"} : {selectedSize}</p><button className="text-xs text-muted underline underline-offset-2">Guide des tailles</button></div>
-          <div className="flex flex-wrap gap-2">{sizes.map((item) => {
-            const matchingVariant = colorVariants.find((variant) => variant.size === item);
-            const unavailable = Boolean(product.variants?.length) && (matchingVariant?.stock ?? 0) <= 0;
-            return <button key={item} disabled={unavailable} onClick={() => { setSize(item); setQuantity(1); }} aria-pressed={selectedSize === item} className={`min-w-12 rounded border px-3 py-2 text-sm ${selectedSize === item ? "border-ink bg-ink text-white" : "border-line hover:border-ink"} disabled:cursor-not-allowed disabled:opacity-35 disabled:line-through`}>{item}</button>;
-          })}</div></>}
+            <div className="flex flex-wrap gap-2">{sizes.map((item) => {
+              const matchingVariant = colorVariants.find((variant) => variant.size === item);
+              const unavailable = Boolean(product.variants?.length) && (matchingVariant?.stock ?? 0) <= 0;
+              return <button key={item} disabled={unavailable} onClick={() => { setSize(item); setQuantity(1); }} aria-pressed={selectedSize === item} className={`min-w-12 rounded border px-3 py-2 text-sm ${selectedSize === item ? "border-ink bg-ink text-white" : "border-line hover:border-ink"} disabled:cursor-not-allowed disabled:opacity-35 disabled:line-through`}>{item}</button>;
+            })}</div></>}
           <p className={`mt-4 flex items-center gap-2 text-xs font-medium ${selectedStock > 0 ? "text-emerald-700" : "text-brand"}`}><span className={`h-2 w-2 rounded-full ${selectedStock > 0 ? "bg-emerald-600" : "bg-brand"}`} />{selectedStock > 0 ? `En stock · ${selectedStock} disponible(s)` : "Cette variante est épuisée"}</p>
           <div className="mt-5 flex gap-3">
             <div className="flex h-12 items-center rounded border border-line">
@@ -666,18 +667,18 @@ function CheckoutPage({ products, cart, clearCart }: { products: DemoProduct[]; 
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [accepted, setAccepted] = useState(false);
-  const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
-  const navigate = useNavigate();
   const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const steps = ["Livraison", "Expédition", "Paiement", "Confirmation"];
+  const [notice, setNotice] = useState("");
+  const navigate = useNavigate();
 
   async function confirmOrder() {
     setNotice("");
     if (!cart.length || !address.trim() || !phone.trim() || !accepted) {
-      setNotice("Renseignez le téléphone et l’adresse, puis acceptez les conditions de vente.");
+      setNotice("Renseignez le téléphone et l'adresse, puis acceptez les conditions de vente.");
       return;
     }
     if (!getAuthSession()) {
@@ -751,7 +752,7 @@ function CheckoutPage({ products, cart, clearCart }: { products: DemoProduct[]; 
           <section className="rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-7">
             <div className="mb-5 flex items-start gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-sm font-bold text-brand">2</span>
-              <div><h2 className="font-heading text-lg font-bold">Mode de livraison</h2><p className="mt-1 text-xs text-muted">Choisissez l’option qui vous convient.</p></div>
+              <div><h2 className="font-heading text-lg font-bold">Mode de livraison</h2><p className="mt-1 text-xs text-muted">Choisissez l&apos;option qui vous convient.</p></div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {[{ id: "home", title: "Livraison à domicile", detail: "Partout en Tunisie · 2 à 4 jours", icon: Truck }, { id: "pickup", title: "Point relais", detail: "Retrait près de chez vous · 3 à 5 jours", icon: MapPin }].map(({ id, title, detail, icon: Icon }) => (
@@ -782,7 +783,7 @@ function CheckoutPage({ products, cart, clearCart }: { products: DemoProduct[]; 
               <div className="flex-1">
                 <h2 className="font-heading text-lg font-bold">Confirmation</h2>
                 <p className="mt-1 text-xs leading-5 text-muted">Vérifiez vos informations et votre panier avant de confirmer.</p>
-                <label className="mt-4 flex items-start gap-2 text-xs leading-5 text-muted"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-1 accent-brand" />J’accepte les conditions générales de vente et la politique de confidentialité.</label>
+                <label className="mt-4 flex items-start gap-2 text-xs leading-5 text-muted"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-1 accent-brand" />J&apos;accepte les conditions générales de vente et la politique de confidentialité.</label>
                 {notice && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-xs text-red-800">{notice}{!getAuthSession() && <button type="button" onClick={() => navigate("/compte")} className="ml-1 font-semibold underline">Se connecter</button>}</p>}
                 {confirmed ? <div role="status" className="mt-5 rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800"><p>Commande confirmée. Merci pour votre achat !</p><Link to="/compte" className="mt-2 inline-flex items-center gap-1 text-xs underline">Suivre ma commande<ArrowRight className="h-3.5 w-3.5" /></Link></div> : <button type="button" disabled={submitting} onClick={() => void confirmOrder()} className="btn btn-primary mt-5 w-full rounded-xl py-3.5 disabled:opacity-50 sm:w-auto">{submitting ? "Envoi…" : "Confirmer la commande"} <ArrowRight className="h-4 w-4" /></button>}
               </div>
@@ -845,7 +846,10 @@ function AccountPage() {
     apiRequest<ApiOrder[]>("/orders/mine")
       .then((result) => { if (active) setOrders(result); })
       .catch((error: unknown) => {
-        if (active) setOrdersError(error instanceof Error ? error.message : "Impossible de charger vos commandes.");
+        if (active) {
+          setOrdersError("error");
+          void showErrorAlert(error, "Impossible de charger vos commandes.");
+        }
       })
       .finally(() => { if (active) setOrdersLoading(false); });
     return () => { active = false; };
@@ -867,7 +871,8 @@ function AccountPage() {
         setNotice("");
       }
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "La connexion a échoué.");
+      setNotice("");
+      void showErrorAlert(error, "La connexion a échoué.");
     }
   }
 
@@ -888,7 +893,6 @@ function AccountPage() {
             <Link to="/catalogue" className="text-xs font-semibold text-brand hover:underline">Continuer mes achats</Link>
           </div>
           {ordersLoading && <p role="status" className="mt-5 rounded-2xl border border-line bg-white p-6 text-sm text-muted">Chargement de vos commandes…</p>}
-          {ordersError && <p role="alert" className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{ordersError}</p>}
           {!ordersLoading && !ordersError && !orders.length && <div className="mt-5 rounded-2xl border border-line bg-white p-8 text-center shadow-sm"><ShoppingBag className="mx-auto h-8 w-8 text-muted" /><p className="mt-3 font-semibold">Aucune commande pour le moment</p><p className="mt-1 text-sm text-muted">Vos commandes apparaîtront ici après confirmation.</p><Link to="/catalogue" className="btn btn-primary mt-5">Découvrir la boutique<ArrowRight className="h-4 w-4" /></Link></div>}
           <div className="mt-5 space-y-4">
             {orders.map((order) => (
@@ -976,8 +980,6 @@ export default function App() {
   const [products, setProducts] = useState<DemoProduct[]>([]);
   const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
-  const [productsError, setProductsError] = useState("");
-  const [categoriesError, setCategoriesError] = useState("");
   const [cart, setCart] = useState<CartLine[]>(() => readStorage<CartLine[]>("nova-cart", []).map((line) => ({
     ...line,
     productId: line.productId ?? "",
@@ -1007,7 +1009,6 @@ export default function App() {
         if (!active) return;
         const mapped = result.map(toStoreProduct);
         setProducts(mapped);
-        setProductsError("");
         setCart((current) => current.map((line) => {
           const product = mapped.find((item) => item.slug === line.slug || item.productId === line.productId);
           if (!product) return line;
@@ -1025,7 +1026,7 @@ export default function App() {
         }));
       })
       .catch((error: unknown) => {
-        if (active) setProductsError(error instanceof Error ? error.message : "Impossible de charger les produits.");
+        if (active) void showErrorAlert(error, "Impossible de charger les produits.");
       })
       .finally(() => {
         if (active) setProductsLoading(false);
@@ -1040,10 +1041,9 @@ export default function App() {
       .then((result) => {
         if (!active) return;
         setCategories(result);
-        setCategoriesError("");
       })
       .catch((error: unknown) => {
-        if (active) setCategoriesError(error instanceof Error ? error.message : "Impossible de charger les catégories.");
+        if (active) void showErrorAlert(error, "Impossible de charger les catégories.");
       });
     return () => { active = false; };
   }, [location.pathname]);
@@ -1090,10 +1090,8 @@ export default function App() {
     navigate(query ? `/catalogue?q=${encodeURIComponent(query)}` : "/catalogue");
   }
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen" onInvalidCapture={handleInvalidField}>
       <Header cartCount={cartCount} favoriteCount={favorites.length} search={search} />
-      {productsError && <p role="alert" className="container-x mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">Erreur de chargement du catalogue : {productsError}</p>}
-      {categoriesError && <p role="alert" className="container-x mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">Erreur de chargement des catégories : {categoriesError}</p>}
       {productsLoading && <p role="status" className="container-x py-12 text-center text-sm text-muted">Chargement du catalogue…</p>}
       <Routes>
         <Route path="/" element={productsLoading ? <p role="status" className="container-x py-12 text-center text-sm text-muted">Chargement du catalogue…</p> : <HomePage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
@@ -1108,7 +1106,7 @@ export default function App() {
         <Route path="*" element={<NotFound />} />
       </Routes>
       <footer className="mt-20 border-t border-line bg-ink py-10 text-white">
-        <div className="container-x grid gap-8 sm:grid-cols-3"><div><Link to="/" className="font-heading text-xl font-semibold tracking-[0.14em] text-white">HAFFELI <span className="text-brand">SHOP</span></Link><p className="mt-2 max-w-xs text-sm text-white/65">Mode et élégance,<br />soigneusement sélectionnées.</p></div><div><h2 className="mb-3 text-sm font-semibold">Navigation</h2><div className="grid gap-2 text-xs text-white/65"><Link to="/" className="hover:text-white">Accueil</Link><Link to="/catalogue" className="hover:text-white">Boutique</Link><Link to="/nouveautes" className="hover:text-white">Nouveautés</Link><Link to="/promotions" className="hover:text-white">Promotions</Link><Link to="/admin/mouvements" className="hover:text-white">Panneau du solde · accès administrateur</Link></div></div><div><h2 className="mb-3 text-sm font-semibold">À propos</h2><div className="grid gap-2 text-xs text-white/65"><span>Notre histoire</span><span>Livraison & retours</span><span>Contact</span></div></div><p className="border-t border-white/20 pt-4 text-center text-[11px] text-white/55 sm:col-span-3">© 2026 Haffeli Shop. Boutique de démonstration React.</p></div>
+        <div className="container-x grid gap-8 sm:grid-cols-3"><div><Link to="/" className="font-heading text-xl font-semibold tracking-[0.14em] text-white">HAFFELI <span className="text-brand">SHOP</span></Link><p className="mt-2 max-w-xs text-sm text-white/65">Mode et élégance,<br />soigneusement sélectionnées.</p></div><div><h2 className="mb-3 text-sm font-semibold">Navigation</h2><div className="grid gap-2 text-xs text-white/65"><Link to="/" className="hover:text-white">Accueil</Link><Link to="/catalogue" className="hover:text-white">Boutique</Link><Link to="/nouveautes" className="hover:text-white">Nouveautés</Link><Link to="/promotions" className="hover:text-white">Promotions</Link><Link to="/admin/mouvements" className="hover:text-white">Panneau du solde · accès administrateur</Link></div></div><div><h2 className="mb-3 text-sm font-semibold">À propos</h2><div className="grid gap-2 text-xs text-white/65"><span>Notre histoire</span><span>Livraison & retours</span><span>Contact +216  28229883 </span><a href="https://www.instagram.com/haffeli_shop/" target="_blank" rel="noopener noreferrer" aria-label="Suivez Haffeli Shop sur Instagram (ouvre un nouvel onglet)" className="inline-flex items-center gap-2 hover:text-white">Instagram</a></div></div><p className="border-t border-white/20 pt-4 text-center text-[11px] text-white/55 sm:col-span-3">© 2026 Haffeli Shop. Boutique de démonstration React.</p></div>
       </footer>
     </div>
   );

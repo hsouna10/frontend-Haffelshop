@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -38,6 +38,7 @@ import {
   type ApiTransaction,
   type AuthSession,
 } from "../lib/api";
+import { handleInvalidField, showConfirmAlert, showErrorAlert } from "../lib/alerts";
 
 type ProductInput = {
   name: string;
@@ -77,6 +78,8 @@ type OrderStatus = "En attente" | "En préparation" | "Expédiée" | "Livrée" |
 
 const statusValues: OrderStatus[] = ["En attente", "En préparation", "Expédiée", "Livrée", "Annulée"];
 const money = (amount: number) => `${amount.toFixed(3).replace(".", ",")} DT`;
+const nonNegativeNumber = (value: string) => Math.max(0, Number.isFinite(Number(value)) ? Number(value) : 0);
+const nonNegativeInteger = (value: string) => Math.floor(nonNegativeNumber(value));
 const orderNumber = (order: ApiOrder) => order.orderNumber ?? "Numéro non migré";
 const paymentLabel = (status?: ApiOrder["paymentStatus"]) => ({
   pending: "En attente",
@@ -230,7 +233,7 @@ function AdminLayout({ children, onLogout }: { children: ReactNode; onLogout: ()
   const title = activePage?.label ?? "Administration";
 
   return (
-    <div className="min-h-screen bg-[#f5f4f0] text-ink lg:flex">
+    <div className="min-h-screen bg-[#f5f4f0] text-ink lg:flex" onInvalidCapture={handleInvalidField}>
       <div className="hidden lg:block"><AdminSidebar onLogout={onLogout} /></div>
       {menuOpen && <div className="fixed inset-0 z-[80] bg-black/50 lg:hidden" onClick={() => setMenuOpen(false)}><div className="h-full w-[min(20rem,86vw)] bg-[#211f1b]" onClick={(event) => event.stopPropagation()}><AdminSidebar onClose={() => setMenuOpen(false)} onLogout={onLogout} /></div></div>}
       <div className="min-w-0 flex-1">
@@ -253,11 +256,6 @@ function AdminLayout({ children, onLogout }: { children: ReactNode; onLogout: ()
 
 function PageTitle({ title, text, action }: { title: string; text: string; action?: ReactNode }) {
   return <div className="mb-7 flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-2xl font-bold tracking-tight sm:text-3xl">{title}</h2><p className="mt-1.5 text-sm text-muted">{text}</p></div>{action}</div>;
-}
-
-function Notice({ error, onDismiss }: { error: string; onDismiss: () => void }) {
-  if (!error) return null;
-  return <div role="alert" className="mb-5 flex items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"><span>{error}</span><button onClick={onDismiss} aria-label="Fermer le message"><X className="h-4 w-4" /></button></div>;
 }
 
 function DashboardPage({ products, orders, users, stats, balance }: { products: ApiProduct[]; orders: ApiOrder[]; users: ApiAdminUser[]; stats: ApiSalesStats; balance: ApiBalance }) {
@@ -308,7 +306,7 @@ function StockPage({ products, onAdjust }: { products: ApiProduct[]; onAdjust: (
     <label className="mb-5 flex max-w-lg items-center gap-2 rounded-xl border border-line bg-white px-4"><Search className="h-4 w-4 text-muted" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher un produit ou un SKU…" className="w-full py-3 text-sm outline-none" /></label>
     <div className="overflow-x-auto rounded-2xl border border-line bg-white"><table className="w-full min-w-[850px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr>{["Produit", "Couleur", "Taille / pointure", "SKU", "Stock", "Quantité", "Action"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line">{rows.map(({ product, variantId, color, size, sku, stock }) => {
       const key = `${product._id}:${variantId ?? "base"}`;
-      return <tr key={key}><td className="px-5 py-4 font-semibold">{product.name}</td><td className="px-5 py-4">{color}</td><td className="px-5 py-4">{size}</td><td className="px-5 py-4 text-muted">{sku || "—"}</td><td className="px-5 py-4 font-bold">{stock}</td><td className="px-5 py-4"><input type="number" min="1" max="100000" value={amounts[key] ?? 1} onChange={(event) => setAmounts({ ...amounts, [key]: Number(event.target.value) })} className="w-24 rounded-lg border border-line px-3 py-2" /></td><td className="px-5 py-4"><div className="flex gap-2"><button disabled={!amounts[key] || amounts[key] < 1} onClick={() => onAdjust(product._id, variantId, amounts[key] ?? 1, "increase")} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-40">Ajouter</button><button disabled={!amounts[key] || amounts[key] < 1} onClick={() => onAdjust(product._id, variantId, amounts[key] ?? 1, "decrease")} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 disabled:opacity-40">Retirer</button></div></td></tr>;
+      return <tr key={key}><td className="px-5 py-4 font-semibold">{product.name}</td><td className="px-5 py-4">{color}</td><td className="px-5 py-4">{size}</td><td className="px-5 py-4 text-muted">{sku || "—"}</td><td className="px-5 py-4 font-bold">{stock}</td><td className="px-5 py-4"><input type="number" min="1" max="100000" value={amounts[key] ?? 1} onChange={(event) => setAmounts({ ...amounts, [key]: nonNegativeInteger(event.target.value) })} className="w-24 rounded-lg border border-line px-3 py-2" /></td><td className="px-5 py-4"><div className="flex gap-2"><button disabled={!amounts[key] || amounts[key] < 1} onClick={() => onAdjust(product._id, variantId, amounts[key] ?? 1, "increase")} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-40">Ajouter</button><button disabled={!amounts[key] || amounts[key] < 1} onClick={() => onAdjust(product._id, variantId, amounts[key] ?? 1, "decrease")} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 disabled:opacity-40">Retirer</button></div></td></tr>;
     })}</tbody></table>{!rows.length && <p className="p-10 text-center text-sm text-muted">Aucun produit trouvé.</p>}</div>
   </>;
 }
@@ -320,12 +318,13 @@ function OrderDetailsDialog({ id, onClose, onUpdate, onPayment }: {
   onPayment: (id: string, status: "paid" | "failed" | "refunded") => Promise<boolean>;
 }) {
   const [order, setOrder] = useState<ApiOrder | null>(null);
-  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function refresh() {
-    setError("");
     try { setOrder(await apiRequest<ApiOrder>(`/admin/orders/${id}`)); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Impossible de charger le détail."); }
+    catch (cause) {
+      await showErrorAlert(cause, "Impossible de charger le détail de la commande.");
+      onClose();
+    }
   }
   useEffect(() => { void refresh(); }, [id]);
   const state = order ? statusLabel(order.status) : "En attente";
@@ -349,7 +348,11 @@ function OrderDetailsDialog({ id, onClose, onUpdate, onPayment }: {
       : status === "refunded"
         ? "Confirmez-vous que le remboursement a réellement été effectué ?"
         : "Confirmer l’échec du paiement ?";
-    if (!window.confirm(prompt)) return;
+    if (!(await showConfirmAlert({
+      title: status === "paid" ? "Confirmer le paiement" : status === "refunded" ? "Confirmer le remboursement" : "Confirmer l’échec du paiement",
+      text: prompt,
+      confirmButtonText: "Confirmer",
+    }))) return;
     setBusy(true);
     if (await onPayment(order._id, status)) await refresh();
     setBusy(false);
@@ -357,8 +360,7 @@ function OrderDetailsDialog({ id, onClose, onUpdate, onPayment }: {
   return <div role="dialog" aria-modal="true" aria-labelledby="order-detail-title" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-3 sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-7">
       <header className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-widest text-brand">Détail de commande</p><h2 id="order-detail-title" className="mt-1 text-xl font-bold">{order ? orderNumber(order) : "Chargement…"}</h2></div><button type="button" onClick={onClose} aria-label="Fermer le détail" className="rounded-full border border-line p-2"><X className="h-4 w-4" /></button></header>
-      {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-      {!order && !error && <p className="py-12 text-center text-sm text-muted">Chargement…</p>}
+      {!order && <p className="py-12 text-center text-sm text-muted">Chargement…</p>}
       {order && <>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl bg-soft p-4"><p className="text-xs text-muted">Client</p><p className="mt-1 font-semibold">{userName(order)}</p><p className="text-sm text-muted">{userEmail(order) || "E-mail indisponible"}</p><p className="mt-2 text-sm">Téléphone : {order.phone || "—"}</p></div>
@@ -389,7 +391,6 @@ function OrdersPage({ onUpdate, onPayment }: {
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<ApiPaginated<ApiOrder>>({ orders: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [selected, setSelected] = useState("");
   const [reload, setReload] = useState(0);
   useEffect(() => {
@@ -400,8 +401,8 @@ function OrdersPage({ onUpdate, onPayment }: {
       if (status) params.set("status", status);
       if (paymentStatus) params.set("paymentStatus", paymentStatus);
       apiRequest<ApiPaginated<ApiOrder>>(`/admin/orders?${params}`)
-        .then((data) => { setResult(data); setError(""); })
-        .catch((cause) => setError(cause instanceof Error ? cause.message : "Impossible de charger les commandes."))
+        .then((data) => setResult(data))
+        .catch((cause) => { void showErrorAlert(cause, "Impossible de charger les commandes."); })
         .finally(() => setLoading(false));
     }, query ? 250 : 0);
     return () => window.clearTimeout(timer);
@@ -426,7 +427,6 @@ function OrdersPage({ onUpdate, onPayment }: {
       <select aria-label="Filtrer par statut de paiement" value={paymentStatus} onChange={(event) => { setPage(1); setPaymentStatus(event.target.value); }} className="rounded-lg border border-line px-3 py-2.5 text-sm"><option value="">Tous les paiements</option><option value="pending">En attente</option><option value="paid">Payé</option><option value="failed">Échoué</option><option value="refunded">Remboursé</option></select>
       <select aria-label="Trier les commandes" value={`${sort}:${sortOrder}`} onChange={(event) => { const [field, direction] = event.target.value.split(":"); setSort(field); setSortOrder(direction); }} className="rounded-lg border border-line px-3 py-2.5 text-sm"><option value="date:desc">Date : récente</option><option value="date:asc">Date : ancienne</option><option value="amount:desc">Montant : décroissant</option><option value="amount:asc">Montant : croissant</option></select>
     </section>
-    {error && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     <div className="overflow-x-auto rounded-2xl border border-line bg-white shadow-sm"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-soft text-[11px] uppercase tracking-wide text-muted"><tr>{["Numéro", "Client", "Date", "Articles", "Total", "Paiement", "Statut", "Action"].map((heading) => <th key={heading} className="px-4 py-4">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line">{orders.map((order) => <tr key={order._id} className="hover:bg-[#faf9f6]"><td className="px-4 py-4 font-bold">{orderNumber(order)}</td><td className="px-4 py-4">{userName(order)}</td><td className="px-4 py-4 text-xs text-muted">{new Date(order.createdAt).toLocaleString("fr-FR")}</td><td className="px-4 py-4">{order.items.reduce((count, item) => count + item.quantity, 0)}</td><td className="px-4 py-4 font-semibold">{money(order.total)}</td><td className="px-4 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${paymentBadgeClass(order.paymentStatus)}`}>{paymentLabel(order.paymentStatus)}</span><span className="mt-1 block text-[10px] text-muted">{order.paymentMethod === "cash_on_delivery" ? "À la livraison" : order.paymentMethod ?? "—"}</span></td><td className="px-4 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${statusBadgeClass(order.status)}`}>{statusLabel(order.status)}</span></td><td className="px-4 py-4"><button type="button" onClick={() => setSelected(order._id)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:bg-soft"><Eye className="h-3.5 w-3.5" />Détails</button></td></tr>)}</tbody></table>{loading && <p className="p-8 text-center text-sm text-muted">Chargement des commandes…</p>}{!loading && !orders.length && <p className="p-10 text-center text-sm text-muted">Aucune commande ne correspond aux filtres.</p>}</div>
     <Pagination page={page} pages={pageCount} total={result.pagination.total} onChange={setPage} />
     {selected && <OrderDetailsDialog id={selected} onClose={() => setSelected("")} onUpdate={refreshAfterUpdate} onPayment={refreshPayment} />}
@@ -454,7 +454,6 @@ function SalesPage({ onUpdate, onPayment }: {
   const [result, setResult] = useState<ApiPaginated<ApiOrder>>({ orders: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } });
   const [stats, setStats] = useState<ApiSalesStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [selected, setSelected] = useState("");
   const [reload, setReload] = useState(0);
   const range = useMemo(() => {
@@ -485,8 +484,7 @@ function SalesPage({ onUpdate, onPayment }: {
       ]).then(([orders, summary]) => {
         setResult(orders);
         setStats(summary);
-        setError("");
-      }).catch((cause) => setError(cause instanceof Error ? cause.message : "Impossible de charger l’historique des ventes."))
+      }).catch((cause) => { void showErrorAlert(cause, "Impossible de charger l’historique des ventes."); })
         .finally(() => setLoading(false));
     }, query ? 250 : 0);
     return () => window.clearTimeout(timer);
@@ -503,7 +501,7 @@ function SalesPage({ onUpdate, onPayment }: {
     return success;
   };
   return <>
-    <PageTitle title="Historique des ventes" text="Historique de commandes et encaissements issus de MongoDB. Les commandes non réglées restent en attente." />
+    <PageTitle title="Historique des ventes" text="Historique de commandes et encaissements et les commandes non réglées restent en attente." />
     <section className="mb-5 grid gap-3 sm:grid-cols-3">
       {[["Chiffre d’affaires encaissé", money(stats?.revenue ?? 0)], ["Nombre de ventes encaissées", String(stats?.sales ?? 0)], ["Panier moyen encaissé", money(stats?.averageBasket ?? 0)]].map(([label, value]) => <article key={label} className="rounded-2xl border border-line bg-white p-4 shadow-sm"><p className="text-xs text-muted">{label}</p><p className="mt-2 text-xl font-bold">{value}</p></article>)}
     </section>
@@ -516,9 +514,7 @@ function SalesPage({ onUpdate, onPayment }: {
         <select aria-label="Filtrer par statut de paiement" value={paymentStatus} onChange={(event) => { setPaymentStatus(event.target.value); setPage(1); }} className="rounded-lg border border-line px-3 py-2.5 text-sm"><option value="">Tous les paiements</option><option value="pending">En attente</option><option value="paid">Payé</option><option value="failed">Échoué</option><option value="refunded">Remboursé</option></select>
         <select aria-label="Trier les ventes" value={`${sort}:${sortOrder}`} onChange={(event) => { const [field, direction] = event.target.value.split(":"); setSort(field); setSortOrder(direction); }} className="rounded-lg border border-line px-3 py-2.5 text-sm"><option value="date:desc">Date : récente</option><option value="date:asc">Date : ancienne</option><option value="amount:desc">Montant : décroissant</option><option value="amount:asc">Montant : croissant</option></select>
       </div>
-      {period === "custom" && from && to && from > to && <p role="alert" className="mt-2 text-xs text-red-700">La date de début doit précéder la date de fin.</p>}
     </div>
-    {error && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     <div className="overflow-x-auto rounded-2xl border border-line bg-white shadow-sm"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-soft text-[11px] uppercase tracking-wide text-muted"><tr>{["Numéro", "Date et heure", "Client", "Articles", "Total", "Paiement", "Statut commande", ""].map((heading) => <th key={heading} className="px-4 py-4">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line">{orders.map((order) => <tr key={order._id}><td className="px-4 py-4 font-bold">{orderNumber(order)}</td><td className="px-4 py-4 text-xs text-muted">{new Date(order.paidAt ?? order.createdAt).toLocaleString("fr-FR")}</td><td className="px-4 py-4">{userName(order)}</td><td className="px-4 py-4">{order.items.reduce((count, item) => count + item.quantity, 0)}</td><td className="px-4 py-4 font-semibold">{money(order.total)}</td><td className="px-4 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${paymentBadgeClass(order.paymentStatus)}`}>{paymentLabel(order.paymentStatus)}</span><span className="mt-1 block text-[10px] text-muted">{order.paymentMethod === "cash_on_delivery" ? "À la livraison" : order.paymentMethod ?? "—"}</span></td><td className="px-4 py-4"><span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${statusBadgeClass(order.status)}`}>{statusLabel(order.status)}</span></td><td className="px-4 py-4"><button type="button" onClick={() => setSelected(order._id)} aria-label={`Détails de ${orderNumber(order)}`} className="rounded-lg border border-line p-2 hover:bg-soft"><Eye className="h-4 w-4" /></button></td></tr>)}</tbody></table>{loading && <p className="p-8 text-center text-sm text-muted">Chargement de l’historique…</p>}{!loading && !orders.length && <p className="p-10 text-center text-sm text-muted">Aucune vente ne correspond à la période et aux filtres.</p>}</div>
     <Pagination page={page} pages={result.pagination.pages} total={result.pagination.total} onChange={setPage} />
     {selected && <OrderDetailsDialog id={selected} onClose={() => setSelected("")} onUpdate={refreshOrder} onPayment={refreshPayment} />}
@@ -529,12 +525,11 @@ function TransactionsPage({ balance }: { balance: ApiBalance }) {
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ApiPaginated<ApiTransaction>>({ transactions: [], pagination: { page: 1, limit: 20, total: 0, pages: 0 } });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   useEffect(() => {
     setLoading(true);
     apiRequest<ApiPaginated<ApiTransaction>>(`/admin/transactions?page=${page}&limit=20`)
-      .then((result) => { setData(result); setError(""); })
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "Impossible de charger les mouvements financiers."))
+      .then((result) => setData(result))
+      .catch((cause) => { void showErrorAlert(cause, "Impossible de charger les mouvements financiers."); })
       .finally(() => setLoading(false));
   }, [page]);
   return <>
@@ -546,7 +541,6 @@ function TransactionsPage({ balance }: { balance: ApiBalance }) {
       ["En attente · estimé", money(balance.pendingEstimated)],
     ].map(([label, value]) => <article key={label} className="rounded-2xl border border-line bg-white p-5"><p className="text-xs text-muted">{label}</p><p className="mt-2 text-xl font-bold">{value}</p></article>)}</section>
     <p className="mb-4 text-xs text-muted">Mis à jour le {new Date(balance.updatedAt).toLocaleString("fr-FR")}. Les commandes à la livraison non encaissées ne sont pas incluses dans le solde.</p>
-    {error && <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     <div className="overflow-x-auto rounded-2xl border border-line bg-white shadow-sm"><table className="w-full min-w-[850px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr>{["Date", "Type", "Commande", "Description", "Montant", "Solde après opération"].map((heading) => <th key={heading} className="px-4 py-4">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line">{(data.transactions ?? []).map((movement, index) => <tr key={`${movement.order}-${movement.type}-${movement.createdAt}-${index}`}><td className="px-4 py-4 text-xs text-muted">{new Date(movement.createdAt).toLocaleString("fr-FR")}</td><td className="px-4 py-4">{movement.type === "payment" ? "Encaissement" : "Remboursement"}</td><td className="px-4 py-4 font-semibold">{movement.orderNumber ?? "Numéro non migré"}</td><td className="px-4 py-4">{movement.description}</td><td className={`px-4 py-4 font-bold ${movement.amount < 0 ? "text-red-700" : "text-emerald-700"}`}>{movement.amount > 0 ? "+" : ""}{money(movement.amount)}</td><td className="px-4 py-4 font-semibold">{money(movement.balanceAfter ?? 0)}</td></tr>)}</tbody></table>{loading && <p className="p-8 text-center text-sm text-muted">Chargement des mouvements…</p>}{!loading && !data.transactions?.length && <p className="p-10 text-center text-sm text-muted">Aucun encaissement ou remboursement enregistré.</p>}</div>
     <Pagination page={page} pages={data.pagination.pages} total={data.pagination.total} onChange={setPage} />
   </>;
@@ -575,6 +569,11 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
   const [step, setStep] = useState(1);
   const shown = useMemo(() => products.filter((product) => `${product.name} ${product.sku ?? ""} ${productCategory(product)}`.toLowerCase().includes(query.toLowerCase())), [products, query]);
   const skuError = editing ? duplicateProductSku(editing.input, products, editing.id) : "";
+  const previousSkuError = useRef("");
+  useEffect(() => {
+    if (skuError && skuError !== previousSkuError.current) void showErrorAlert(skuError);
+    previousSkuError.current = skuError;
+  }, [skuError]);
   const selectedCategoryFamily = editing
     ? categoryProductType(categories.find((category) => category._id === editing.input.category)?.name ?? "")
     : null;
@@ -614,6 +613,13 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
         variants: (product.variants ?? []).map((variant) => ({ _id: variant._id, color: variant.color, size: variant.size ?? "", sku: variant.sku ?? "", stock: variant.stock, priceOverride: variant.priceOverride ?? "" })),
       },
     } : { id: null, input: { ...empty } });
+  }
+  async function confirmDelete(product: ApiProduct) {
+    if (await showConfirmAlert({
+      title: "Confirmer la suppression",
+      text: `Supprimer « ${product.name} » ?`,
+      confirmButtonText: "Supprimer",
+    })) await onDelete(product._id);
   }
 
   async function submit(event: FormEvent) {
@@ -707,11 +713,15 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
       return;
     }
     if (!file.type.startsWith("image/")) {
-      setImageError("Choisissez un fichier image.");
+      const message = "Choisissez un fichier image.";
+      setImageError(message);
+      void showErrorAlert(message);
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setImageError("L’image ne doit pas dépasser 5 Mo.");
+      const message = "L’image ne doit pas dépasser 5 Mo.";
+      setImageError(message);
+      void showErrorAlert(message);
       return;
     }
     setImage(file);
@@ -720,7 +730,7 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
   return <>
     <PageTitle title="Produits" text="Créez, modifiez et supprimez les produits de la base de données." action={<button onClick={() => startEdit()} className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white"><Plus className="mr-1 inline h-4 w-4" />Ajouter un produit</button>} />
     <label className="mb-5 flex max-w-lg items-center gap-2 rounded-xl border border-line bg-white px-4"><Search className="h-4 w-4 text-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Chercher un produit…" className="w-full py-3 text-sm outline-none" /></label>
-    <div className="overflow-x-auto rounded-2xl border border-line bg-white"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr>{["Produit", "SKU", "Catégorie", "Prix", "Couleurs / variantes", "Stock total", "Statut", "Actions"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line">{shown.map((product) => <tr key={product._id}><td className="px-5 py-4"><div className="flex items-center gap-3">{(product.image || product.colors?.[0]?.images[0]?.url) && <img src={product.image || product.colors?.[0]?.images[0]?.url} alt="" className="h-12 w-10 rounded-lg object-cover" />}<span className="font-semibold">{product.name}</span></div></td><td className="px-5 py-4 text-muted">{product.sku || "—"}</td><td className="px-5 py-4">{productCategory(product)}</td><td className="px-5 py-4">{money(product.salePrice ?? product.price)}</td><td className="px-5 py-4">{product.colors?.length ?? 0} couleurs · {product.variants?.length ?? 0} variantes</td><td className="px-5 py-4 font-semibold">{product.stock}</td><td className="px-5 py-4">{product.isActive === false ? "Inactif" : "Actif"}</td><td className="px-5 py-4"><div className="flex gap-2"><button onClick={() => startEdit(product)} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:bg-soft">Modifier</button><button onClick={() => { if (window.confirm(`Supprimer « ${product.name} » ?`)) void onDelete(product._id); }} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">Supprimer</button></div></td></tr>)}</tbody></table>{!shown.length && <p className="p-10 text-center text-sm text-muted">Aucun produit.</p>}</div>
+    <div className="overflow-x-auto rounded-2xl border border-line bg-white"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr>{["Produit", "SKU", "Catégorie", "Prix", "Couleurs / variantes", "Stock total", "Statut", "Actions"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line">{shown.map((product) => <tr key={product._id}><td className="px-5 py-4"><div className="flex items-center gap-3">{(product.image || product.colors?.[0]?.images[0]?.url) && <img src={product.image || product.colors?.[0]?.images[0]?.url} alt="" className="h-12 w-10 rounded-lg object-cover" />}<span className="font-semibold">{product.name}</span></div></td><td className="px-5 py-4 text-muted">{product.sku || "—"}</td><td className="px-5 py-4">{productCategory(product)}</td><td className="px-5 py-4">{money(product.salePrice ?? product.price)}</td><td className="px-5 py-4">{product.colors?.length ?? 0} couleurs · {product.variants?.length ?? 0} variantes</td><td className="px-5 py-4 font-semibold">{product.stock}</td><td className="px-5 py-4">{product.isActive === false ? "Inactif" : "Actif"}</td><td className="px-5 py-4"><div className="flex gap-2"><button onClick={() => startEdit(product)} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:bg-soft">Modifier</button><button onClick={() => void confirmDelete(product)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">Supprimer</button></div></td></tr>)}</tbody></table>{!shown.length && <p className="p-10 text-center text-sm text-muted">Aucun produit.</p>}</div>
     {editing && <div role="dialog" aria-modal="true" aria-labelledby="product-form-title" className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-[#171612]/60 p-3 backdrop-blur-sm sm:p-6"><form onSubmit={(event) => void submit(event)} className="my-auto max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/70 bg-[#fffefa] shadow-[0_32px_100px_rgba(0,0,0,0.28)]">
       <header className="sticky top-0 z-10 border-b border-line/80 bg-[#fffefa]/95 px-5 py-5 backdrop-blur-md sm:px-8">
         <div className="flex items-start justify-between gap-4">
@@ -746,18 +756,17 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
         {selectedProductFamily && <label className="text-xs font-semibold text-ink">Type de {selectedProductFamily === "clothing" ? "vêtement" : selectedProductFamily === "shoes" ? "chaussure" : "accessoire"}<select required value={editing.input.productSubtype} onChange={(event) => change("productSubtype", event.target.value)} className="mt-1.5 w-full rounded-xl border border-line bg-white px-4 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10"><option value="">Choisir un type</option>{subtypeTypes[selectedProductFamily].map((type) => <option key={type} value={type}>{type}</option>)}</select></label>}
         {!selectedCategoryFamily && <label className="text-xs font-semibold text-ink">Type de produit<select value={editing.input.productType} onChange={(event) => changeProductType(event.target.value as ProductInput["productType"])} className="mt-1.5 w-full rounded-xl border border-line bg-white px-4 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10"><option value="clothing">Vêtement</option><option value="shoes">Chaussure</option><option value="accessory">Accessoire</option></select></label>}
         <label className="text-xs font-semibold text-ink">Marque<input maxLength={100} value={editing.input.brand} onChange={(event) => change("brand", event.target.value)} placeholder="Ex. Nike" className="mt-1.5 w-full rounded-xl border border-line bg-white px-4 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10" /></label>
-        <label className="text-xs font-semibold text-ink">Prix<input type="number" required min="0" step="0.001" value={editing.input.price} onChange={(event) => change("price", Number(event.target.value))} className="mt-1.5 w-full rounded-xl border border-line bg-white px-4 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10" /></label>
-        <label className="text-xs font-semibold text-ink">Prix promotionnel<input type="number" min="0" step="0.001" value={editing.input.salePrice} onChange={(event) => change("salePrice", event.target.value ? Number(event.target.value) : "")} className="mt-1.5 w-full rounded-xl border border-line bg-white px-4 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10" /></label>
+        <label className="text-xs font-semibold text-ink">Prix<input type="number" required min="0" step="0.001" value={editing.input.price} onChange={(event) => change("price", nonNegativeNumber(event.target.value))} className="mt-1.5 w-full rounded-xl border border-line bg-white px-4 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10" /></label>
+        <label className="text-xs font-semibold text-ink">Prix promotionnel<input type="number" min="0" step="0.001" value={editing.input.salePrice} onChange={(event) => change("salePrice", event.target.value ? nonNegativeNumber(event.target.value) : "")} className="mt-1.5 w-full rounded-xl border border-line bg-white px-4 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10" /></label>
         <label className="flex items-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-sm sm:col-span-2"><input type="checkbox" checked={editing.input.isActive} onChange={(event) => change("isActive", event.target.checked)} className="h-4 w-4 accent-brand" /><span><span className="block font-semibold">Produit actif</span><span className="mt-0.5 block text-xs font-normal text-muted">Visible par les clients dans la boutique</span></span></label>
         {!editing.input.variants.length
-          ? <label className="text-xs font-semibold text-ink">Stock<input type="number" required min="0" max="100000" value={editing.input.stock} onChange={(event) => change("stock", Number(event.target.value))} className="mt-1.5 w-full rounded-xl border border-line bg-white px-4 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10" /></label>
+          ? <label className="text-xs font-semibold text-ink">Stock<input type="number" required min="0" max="100000" value={editing.input.stock} onChange={(event) => change("stock", nonNegativeInteger(event.target.value))} className="mt-1.5 w-full rounded-xl border border-line bg-white px-4 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10" /></label>
           : <p className="rounded-xl border border-line bg-white px-4 py-3 text-sm sm:col-span-2">Stock total actuel : <strong>{editing.input.variants.reduce((sum, variant) => sum + variant.stock, 0)}</strong><span className="ml-1 text-xs text-muted">(calculé à l’étape suivante)</span></p>}
         <div className="sm:col-span-2">
           <label className="block text-xs font-semibold text-ink">Image principale <span className="font-normal text-muted">(5 Mo maximum)</span>
             <input type="file" accept="image/*" onChange={(event) => selectImage(event.target.files?.[0])} className="mt-1.5 block w-full rounded-xl border border-line bg-white p-2 text-xs font-normal file:mr-3 file:rounded-lg file:border-0 file:bg-soft file:px-3 file:py-2 file:text-xs file:font-semibold file:text-ink" />
           </label>
           {image && <p className="mt-1.5 text-xs text-muted">Image sélectionnée : {image.name}</p>}
-          {imageError && <p role="alert" className="mt-1.5 text-xs text-red-700">{imageError}</p>}
           {imagePreview && <img src={imagePreview} alt="Aperçu de l’image du produit" className="mt-3 h-36 w-32 rounded-lg border border-line object-cover" />}
         </div>
         <label className="text-xs font-semibold text-ink sm:col-span-2">Ou utiliser une URL d’image<input type="url" value={editing.input.image} onChange={(event) => change("image", event.target.value)} placeholder="https://exemple.com/image.jpg" className="mt-1.5 w-full rounded-xl border border-line bg-white px-4 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10" /></label>
@@ -781,12 +790,16 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
                   <input type="file" accept="image/*" multiple aria-label={`Choisir les photos pour la couleur ${color.name || "sans nom"}`} onChange={(event) => {
                   const files = Array.from(event.target.files ?? []);
                   if (files.some((file) => !file.type.startsWith("image/") || file.size > 5 * 1024 * 1024)) {
-                    setImageError("Chaque fichier doit être une image de 5 Mo maximum.");
+                    const message = "Chaque fichier doit être une image de 5 Mo maximum.";
+                    setImageError(message);
+                    void showErrorAlert(message);
                     return;
                   }
                   const count = editing.input.colors.reduce((total, item) => total + item.files.length, 0) - color.files.length + files.length;
                   if (count > 20) {
-                    setImageError("Téléversez au maximum 20 images de variantes par produit.");
+                    const message = "Téléversez au maximum 20 images de variantes par produit.";
+                    setImageError(message);
+                    void showErrorAlert(message);
                     return;
                   }
                   setImageError("");
@@ -800,9 +813,9 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
                   const variantIndex = editing.input.variants.indexOf(variant);
                   return <div key={variant._id ?? `${color._id}-${variantIndex}`} className={`mb-2 grid gap-2 rounded-xl border border-line bg-white p-3 ${editing.input.productType === "accessory" ? "sm:grid-cols-[1fr_1fr_1fr_auto]" : "sm:grid-cols-[1fr_1fr_1fr_1fr_auto]"}`}>
                     {editing.input.productType !== "accessory" && <label className="text-[10px] font-semibold">{editing.input.productType === "shoes" ? "Pointure" : "Taille"}<input value={variant.size} onChange={(event) => changeVariant(variantIndex, { size: event.target.value })} placeholder={editing.input.productType === "shoes" ? "42" : "M"} className="mt-1 w-full rounded-lg border border-line px-3 py-2 text-xs font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10" /></label>}
-                    <label className="text-[10px] font-semibold">Stock<input type="number" min="0" max="100000" value={variant.stock} onChange={(event) => changeVariant(variantIndex, { stock: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-line px-3 py-2 text-xs font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10" /></label>
+                    <label className="text-[10px] font-semibold">Stock<input type="number" min="0" max="100000" value={variant.stock} onChange={(event) => changeVariant(variantIndex, { stock: nonNegativeInteger(event.target.value) })} className="mt-1 w-full rounded-lg border border-line px-3 py-2 text-xs font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10" /></label>
                     <label className="text-[10px] font-semibold">SKU<input value={variant.sku} onChange={(event) => changeVariant(variantIndex, { sku: event.target.value })} className="mt-1 w-full rounded-lg border border-line px-3 py-2 text-xs font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10" /></label>
-                    <label className="text-[10px] font-semibold">Prix spécifique<input type="number" min="0" step="0.001" value={variant.priceOverride} onChange={(event) => changeVariant(variantIndex, { priceOverride: event.target.value ? Number(event.target.value) : "" })} className="mt-1 w-full rounded-lg border border-line px-3 py-2 text-xs font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10" /></label>
+                    <label className="text-[10px] font-semibold">Prix spécifique<input type="number" min="0" step="0.001" value={variant.priceOverride} onChange={(event) => changeVariant(variantIndex, { priceOverride: event.target.value ? nonNegativeNumber(event.target.value) : "" })} className="mt-1 w-full rounded-lg border border-line px-3 py-2 text-xs font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10" /></label>
                     <button type="button" onClick={() => removeVariant(variantIndex)} aria-label="Supprimer la variante" className="self-end rounded border border-red-200 p-2 text-red-700"><Trash2 className="h-3.5 w-3.5" /></button>
                   </div>;
                 })}
@@ -811,12 +824,10 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
             </div>
           ))}
           {editing.input.variants.length > 0 && <p className="mt-3 text-sm font-semibold">Stock total calculé : {editing.input.variants.reduce((sum, variant) => sum + variant.stock, 0)}</p>}
-          {imageError && <p role="alert" className="mt-2 text-xs text-red-700">{imageError}</p>}
         </section>
         </>}
       </div>
       {!categories.length && <p className="mt-4 text-sm text-amber-800">Créez d’abord une catégorie avant d’ajouter un produit.</p>}
-      {skuError && <p role="alert" className="mt-4 text-sm text-red-700">{skuError}</p>}
       </div>
       <footer className="sticky bottom-0 flex justify-between gap-3 border-t border-line/80 bg-[#fffefa]/95 px-5 py-4 backdrop-blur-md sm:px-8">
         {step === 1
@@ -858,6 +869,13 @@ function CategoryImagePreview({ file, image }: { file: File | null; image?: stri
 
 function CategoriesPage({ categories, onSave, onDelete }: { categories: ApiCategory[]; onSave: (id: string | null, input: CategoryInput, image: File | null) => Promise<boolean>; onDelete: (id: string) => Promise<void> }) {
   const [editing, setEditing] = useState<{ id: string | null; input: CategoryInput; image: File | null; error: string } | null>(null);
+  async function confirmDelete(category: ApiCategory) {
+    if (await showConfirmAlert({
+      title: "Confirmer la suppression",
+      text: `Supprimer la catégorie « ${category.name} » ? Les catégories liées à des produits ne peuvent pas être supprimées.`,
+      confirmButtonText: "Supprimer",
+    })) await onDelete(category._id);
+  }
   function selectImage(file?: File) {
     if (!editing) return;
     if (!file) {
@@ -865,19 +883,23 @@ function CategoriesPage({ categories, onSave, onDelete }: { categories: ApiCateg
       return;
     }
     if (!file.type.startsWith("image/")) {
-      setEditing({ ...editing, image: null, error: "Choisissez un fichier image." });
+      const message = "Choisissez un fichier image.";
+      setEditing({ ...editing, image: null, error: message });
+      void showErrorAlert(message);
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setEditing({ ...editing, image: null, error: "L’image ne doit pas dépasser 5 Mo." });
+      const message = "L’image ne doit pas dépasser 5 Mo.";
+      setEditing({ ...editing, image: null, error: message });
+      void showErrorAlert(message);
       return;
     }
     setEditing({ ...editing, image: file, error: "" });
   }
   return <>
     <PageTitle title="Catégories" text="Gérez les catégories associées aux produits et leur image de présentation." action={<button onClick={() => setEditing({ id: null, input: { name: "", description: "" }, image: null, error: "" })} className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white"><Plus className="mr-1 inline h-4 w-4" />Ajouter</button>} />
-    <div className="overflow-x-auto rounded-2xl border border-line bg-white"><table className="w-full min-w-[650px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr><th className="px-5 py-4">Image</th><th className="px-5 py-4">Nom</th><th className="px-5 py-4">Description</th><th className="px-5 py-4 text-right">Actions</th></tr></thead><tbody className="divide-y divide-line">{categories.map((category) => <tr key={category._id}><td className="px-5 py-3">{category.image ? <img src={category.image} alt="" className="h-14 w-12 rounded-lg object-cover" /> : <span className="text-xs text-muted">—</span>}</td><td className="px-5 py-4 font-semibold">{category.name}</td><td className="px-5 py-4 text-muted">{category.description || "—"}</td><td className="px-5 py-4"><div className="flex justify-end gap-2"><button onClick={() => setEditing({ id: category._id, input: { name: category.name, description: category.description ?? "" }, image: null, error: "" })} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold">Modifier</button><button onClick={() => { if (window.confirm(`Supprimer la catégorie « ${category.name} » ? Les catégories liées à des produits ne peuvent pas être supprimées.`)) void onDelete(category._id); }} aria-label={`Supprimer ${category.name}`} className="rounded-lg border border-red-200 p-2 text-red-700"><Trash2 className="h-4 w-4" /></button></div></td></tr>)}</tbody></table>{!categories.length && <p className="p-10 text-center text-sm text-muted">Aucune catégorie.</p>}</div>
-    {editing && <div role="dialog" aria-modal="true" aria-labelledby="category-form-title" className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-black/40 p-4"><form onSubmit={(event) => { event.preventDefault(); void onSave(editing.id, editing.input, editing.image).then((saved) => { if (saved) setEditing(null); }); }} className="my-auto w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"><h3 id="category-form-title" className="mb-5 text-lg font-bold">{editing.id ? "Modifier la catégorie" : "Ajouter une catégorie"}</h3><label className="block text-xs font-semibold">Nom<input required maxLength={100} value={editing.input.name} onChange={(event) => setEditing({ ...editing, input: { ...editing.input, name: event.target.value } })} className="mt-1.5 w-full rounded-lg border border-line px-3 py-2.5 text-sm font-normal" /></label><label className="mt-4 block text-xs font-semibold">Description<textarea maxLength={5000} value={editing.input.description} onChange={(event) => setEditing({ ...editing, input: { ...editing.input, description: event.target.value } })} className="mt-1.5 w-full rounded-lg border border-line px-3 py-2.5 text-sm font-normal" /></label><label className="mt-4 block text-xs font-semibold">Image de catégorie <span className="font-normal text-muted">(facultative, 5 Mo maximum)</span><input type="file" accept="image/*" onChange={(event) => selectImage(event.target.files?.[0])} className="mt-1.5 block w-full rounded-lg border border-line p-2 text-xs font-normal file:mr-3 file:rounded-md file:border-0 file:bg-soft file:px-3 file:py-2 file:text-xs file:font-semibold" /></label><CategoryImagePreview file={editing.image} image={categories.find((category) => category._id === editing.id)?.image} />{editing.error && <p role="alert" className="mt-2 text-xs text-red-700">{editing.error}</p>}<div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-line px-4 py-2.5 text-sm font-semibold">Annuler</button><button disabled={Boolean(editing.error)} className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Enregistrer</button></div></form></div>}
+    <div className="overflow-x-auto rounded-2xl border border-line bg-white"><table className="w-full min-w-[650px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr><th className="px-5 py-4">Image</th><th className="px-5 py-4">Nom</th><th className="px-5 py-4">Description</th><th className="px-5 py-4 text-right">Actions</th></tr></thead><tbody className="divide-y divide-line">{categories.map((category) => <tr key={category._id}><td className="px-5 py-3">{category.image ? <img src={category.image} alt="" className="h-14 w-12 rounded-lg object-cover" /> : <span className="text-xs text-muted">—</span>}</td><td className="px-5 py-4 font-semibold">{category.name}</td><td className="px-5 py-4 text-muted">{category.description || "—"}</td><td className="px-5 py-4"><div className="flex justify-end gap-2"><button onClick={() => setEditing({ id: category._id, input: { name: category.name, description: category.description ?? "" }, image: null, error: "" })} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold">Modifier</button><button onClick={() => void confirmDelete(category)} aria-label={`Supprimer ${category.name}`} className="rounded-lg border border-red-200 p-2 text-red-700"><Trash2 className="h-4 w-4" /></button></div></td></tr>)}</tbody></table>{!categories.length && <p className="p-10 text-center text-sm text-muted">Aucune catégorie.</p>}</div>
+    {editing && <div role="dialog" aria-modal="true" aria-labelledby="category-form-title" className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-black/40 p-4"><form onSubmit={(event) => { event.preventDefault(); void onSave(editing.id, editing.input, editing.image).then((saved) => { if (saved) setEditing(null); }); }} className="my-auto w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"><h3 id="category-form-title" className="mb-5 text-lg font-bold">{editing.id ? "Modifier la catégorie" : "Ajouter une catégorie"}</h3><label className="block text-xs font-semibold">Nom<input required maxLength={100} value={editing.input.name} onChange={(event) => setEditing({ ...editing, input: { ...editing.input, name: event.target.value } })} className="mt-1.5 w-full rounded-lg border border-line px-3 py-2.5 text-sm font-normal" /></label><label className="mt-4 block text-xs font-semibold">Description<textarea maxLength={5000} value={editing.input.description} onChange={(event) => setEditing({ ...editing, input: { ...editing.input, description: event.target.value } })} className="mt-1.5 w-full rounded-lg border border-line px-3 py-2.5 text-sm font-normal" /></label><label className="mt-4 block text-xs font-semibold">Image de catégorie <span className="font-normal text-muted">(facultative, 5 Mo maximum)</span><input type="file" accept="image/*" onChange={(event) => selectImage(event.target.files?.[0])} className="mt-1.5 block w-full rounded-lg border border-line p-2 text-xs font-normal file:mr-3 file:rounded-md file:border-0 file:bg-soft file:px-3 file:py-2 file:text-xs file:font-semibold" /></label><CategoryImagePreview file={editing.image} image={categories.find((category) => category._id === editing.id)?.image} /><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setEditing(null)} className="rounded-lg border border-line px-4 py-2.5 text-sm font-semibold">Annuler</button><button disabled={Boolean(editing.error)} className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">Enregistrer</button></div></form></div>}
   </>;
 }
 
@@ -897,12 +919,10 @@ export default function AdminApp() {
   const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [users, setUsers] = useState<ApiAdminUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const path = useLocation().pathname;
 
-  async function loadData(showLoading = true) {
+  async function loadData(showLoading = true): Promise<boolean> {
     if (showLoading) setLoading(true);
-    setError("");
     try {
       const [stock, orderResult, categoryList, userList, balanceResult, statsResult] = await Promise.all([
         apiRequest<ApiProduct[]>("/admin/products/stock"),
@@ -918,8 +938,10 @@ export default function AdminApp() {
       setUsers(userList);
       setBalance(balanceResult);
       setSalesStats(statsResult);
+      return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Impossible de charger les données admin.");
+      await showErrorAlert(cause, "Impossible de charger les données administrateur.");
+      return false;
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -929,15 +951,13 @@ export default function AdminApp() {
     if (session?.user.role === "admin") void loadData();
     else setLoading(false);
   }, [session?.token, session?.user.role]);
-
   async function runAction(action: () => Promise<unknown>, reload = true, quietReload = false): Promise<boolean> {
-    setError("");
     try {
       await action();
-      if (reload) await loadData(!quietReload);
+      if (reload && !(await loadData(!quietReload))) return false;
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "L’opération a échoué.");
+      await showErrorAlert(cause, "L’opération a échoué.");
       return false;
     }
   }
@@ -1000,5 +1020,5 @@ export default function AdminApp() {
   else if (path === "/admin/utilisateurs") page = <UsersPage users={users} />;
   else page = <DashboardPage products={products} orders={orders} users={users} stats={salesStats} balance={balance} />;
 
-  return <AdminLayout onLogout={logout}><Notice error={error} onDismiss={() => setError("")} />{loading ? <p className="py-16 text-center text-sm text-muted">Chargement des données du serveur…</p> : page}</AdminLayout>;
+  return <AdminLayout onLogout={logout}>{loading ? <p className="py-16 text-center text-sm text-muted">Chargement des données du serveur…</p> : page}</AdminLayout>;
 }
