@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   ArrowLeft,
@@ -44,6 +44,14 @@ type CartLine = {
   sku?: string;
 };
 const money = (amount: number) => `${amount.toFixed(3).replace(".", ",")} DT`;
+const categorySlug = (category: string) => category
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLocaleLowerCase()
+  .trim()
+  .replace(/[^a-z0-9]+/g, "-")
+  .replace(/^-|-$/g, "");
+const categoryPath = (category: string) => `/catalogue/${categorySlug(category)}`;
 const clothingCategories = [
   "T-shirts et débardeurs",
   "Sweats et hoodies",
@@ -51,8 +59,8 @@ const clothingCategories = [
   "Shorts",
   "Leggings",
   "Vestes et manteaux",
-  "Maillots de sport",
-  "Vêtements de football",
+  "Hoodies",
+  "Vêtements pour enfants",
   "Vêtements de basketball",
   "Vêtements de running",
 ];
@@ -62,7 +70,7 @@ const shoeCategories = [
   "Football",
   "Basketball",
   "Training / Fitness",
-  "Skateboard",
+  "Claquette",
   "Randonnée et outdoor",
   "Chaussures pour enfants",
 ];
@@ -198,10 +206,10 @@ function Header({ cartCount, favoriteCount, search }: { cartCount: number; favor
               { title: "Accessoires", children: accessoryCategories },
             ].map((item) => (
               <li key={item.title} className="group relative flex h-full items-center">
-                <NavLink to={`/catalogue?categorie=${encodeURIComponent(item.children[0])}`} className={({ isActive }) => `relative flex h-9 items-center gap-1 rounded-full px-4 transition-all ${isActive && item.children.some((child) => location.search.includes(encodeURIComponent(child))) ? "bg-white/85 text-brand shadow-sm" : "text-ink/80 hover:bg-white/70 hover:text-brand"}`}>{item.title}<ChevronDown className="h-3 w-3 transition group-hover:rotate-180" /></NavLink>
+                <NavLink to={categoryPath(item.children[0])} className={({ isActive }) => `relative flex h-9 items-center gap-1 rounded-full px-4 transition-all ${isActive || item.children.some((child) => location.pathname === categoryPath(child)) ? "bg-white/85 text-brand shadow-sm" : "text-ink/80 hover:bg-white/70 hover:text-brand"}`}>{item.title}<ChevronDown className="h-3 w-3 transition group-hover:rotate-180" /></NavLink>
                 <div className={`invisible absolute left-1/2 top-full z-50 min-w-56 -translate-x-1/2 translate-y-2 rounded-2xl border border-white/75 bg-white/90 p-2 opacity-0 shadow-[0_18px_45px_rgba(33,31,27,0.14)] backdrop-blur-2xl transition duration-200 group-hover:visible group-hover:translate-y-1 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-1 group-focus-within:opacity-100 ${item.children.length > 5 ? "max-h-[70vh] w-72 overflow-y-auto" : ""}`}>
                   <p className="px-3 pb-2 pt-2 text-[10px] font-bold uppercase tracking-[0.16em] text-muted">{item.title}</p>
-                  {item.children.map((child) => <Link key={child} to={`/catalogue?categorie=${encodeURIComponent(child)}`} className="block rounded-md px-3 py-2.5 text-xs font-medium normal-case tracking-normal transition hover:bg-soft hover:pl-4 hover:text-brand">{child}<ArrowRight className="float-right h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" /></Link>)}
+                  {item.children.map((child) => <Link key={child} to={categoryPath(child)} className="block rounded-md px-3 py-2.5 text-xs font-medium normal-case tracking-normal transition hover:bg-soft hover:pl-4 hover:text-brand">{child}<ArrowRight className="float-right h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" /></Link>)}
                 </div>
               </li>
             ))}
@@ -218,7 +226,7 @@ function Header({ cartCount, favoriteCount, search }: { cartCount: number; favor
           ].map((item) => <details key={item.title} className="group rounded-md px-3 py-2.5">
             <summary className="flex cursor-pointer list-none items-center justify-between hover:text-brand">{item.title}<ChevronDown className="h-4 w-4 transition group-open:rotate-180" /></summary>
             <div className="mt-2 grid max-h-56 gap-1 overflow-y-auto border-l border-line pl-3">
-              {item.children.map((category) => <Link key={category} to={`/catalogue?categorie=${encodeURIComponent(category)}`} className="rounded-md px-2 py-2 text-xs font-medium text-muted hover:bg-soft hover:text-brand">{category}</Link>)}
+              {item.children.map((category) => <Link key={category} to={categoryPath(category)} className="rounded-md px-2 py-2 text-xs font-medium text-muted hover:bg-soft hover:text-brand">{category}</Link>)}
             </div>
           </details>)}
           <Link to="/compte" className="rounded-md px-3 py-2.5 hover:bg-soft">Mon compte</Link><Link to="/favoris" className="rounded-md px-3 py-2.5 hover:bg-soft">Mes favoris {favoriteCount > 0 && <span className="ml-1 text-xs text-brand">({favoriteCount})</span>}</Link>
@@ -335,7 +343,7 @@ function HomePage({ products, categories, favorites, toggleFavorite }: { product
             {categoryCards.map((item, index) => {
               return (
                 <Link
-                  to={`/catalogue?categorie=${encodeURIComponent(item.name)}`}
+                  to={categoryPath(item.name)}
                   key={item.name}
                   className={`group relative isolate block min-h-40 overflow-hidden rounded-2xl bg-ink shadow-[0_8px_24px_rgba(33,31,27,0.08)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_18px_36px_rgba(33,31,27,0.18)] sm:rounded-3xl ${item.featured ? "col-span-2 aspect-[1.65/1] lg:row-span-2 lg:aspect-auto lg:min-h-[396px]" : index === 5 ? "col-span-2 aspect-[2.1/1] lg:col-span-2 lg:aspect-auto" : "aspect-[0.88/1] lg:aspect-auto"}`}
                 >
@@ -384,7 +392,14 @@ function HomePage({ products, categories, favorites, toggleFavorite }: { product
 function CatalogPage({ products: allProducts, categories, favorites, toggleFavorite }: { products: DemoProduct[]; categories: ApiCategory[]; favorites: string[]; toggleFavorite: (slug: string) => void }) {
   const [params, setParams] = useSearchParams();
   const path = useLocation().pathname;
-  const category = params.get("categorie") ?? "";
+  const { categorySlug: routeCategorySlug } = useParams();
+  const queryCategory = params.get("categorie") ?? "";
+  const category = routeCategorySlug
+    ? categories.find((item) => categorySlug(item.name) === routeCategorySlug)?.name
+      ?? allProducts.find((product) => categorySlug(product.productSubtype ?? "") === routeCategorySlug)?.productSubtype
+      ?? routeCategorySlug
+    : queryCategory;
+  const navigate = useNavigate();
   const term = params.get("q")?.toLowerCase() ?? "";
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
@@ -395,6 +410,17 @@ function CatalogPage({ products: allProducts, categories, favorites, toggleFavor
   const [onSale, setOnSale] = useState(false);
   const [sort, setSort] = useState("Nouveautés");
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setMinPrice("");
+    setMaxPrice("");
+    setSizes([]);
+    setColors([]);
+    setBrands([]);
+    setInStock(false);
+    setOnSale(false);
+    setPage(1);
+  }, [category, path]);
 
   let heading = "Tout le catalogue";
   let products = allProducts;
@@ -410,11 +436,23 @@ function CatalogPage({ products: allProducts, categories, favorites, toggleFavor
     );
   }
   if (term) products = products.filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(term));
+  const sizeOptions = [...new Set(products.flatMap((product) => product.sizes))]
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+  const colorOptions = [...new Map(products.flatMap((product) =>
+    product.colors?.length
+      ? product.colors.map(({ name, hex }) => ({ name, hex }))
+      : [{ name: product.color, hex: product.colorHex }],
+  ).map((color) => [color.name, color])).values()]
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const brandOptions = [...new Set(products.map((product) => product.brand))]
+    .sort((left, right) => left.localeCompare(right));
+  const parsedMinPrice = minPrice.trim() ? Number(minPrice.replace(",", ".")) : undefined;
+  const parsedMaxPrice = maxPrice.trim() ? Number(maxPrice.replace(",", ".")) : undefined;
   products = products.filter((product) =>
-    (!minPrice || product.price >= Number(minPrice)) &&
-    (!maxPrice || product.price <= Number(maxPrice)) &&
+    (parsedMinPrice === undefined || product.price >= parsedMinPrice) &&
+    (parsedMaxPrice === undefined || product.price <= parsedMaxPrice) &&
     (!sizes.length || sizes.some((size) => product.sizes.includes(size))) &&
-    (!colors.length || colors.includes(product.color)) &&
+    (!colors.length || colors.includes(product.color) || product.colors?.some((color) => colors.includes(color.name))) &&
     (!brands.length || brands.includes(product.brand)) &&
     (!inStock || product.stock > 0) &&
     (!onSale || Boolean(product.oldPrice)),
@@ -426,29 +464,31 @@ function CatalogPage({ products: allProducts, categories, favorites, toggleFavor
   const pageSize = 6;
   const pageCount = Math.max(1, Math.ceil(products.length / pageSize));
   const pageProducts = products.slice((page - 1) * pageSize, page * pageSize);
-  const sizeOptions = ["S", "M", "L", "XL", "38", "39", "40", "41"];
-  const colorOptions = [
-    { name: "Noir", hex: "#171717" },
-    { name: "Blanc", hex: "#fff" },
-    { name: "Beige", hex: "#ddc2a0" },
-    { name: "Rouge", hex: "#c92538" },
-    { name: "Bleu", hex: "#526b8a" },
-    { name: "Sable", hex: "#c9aa86" },
-    { name: "Camel", hex: "#b88b61" },
-    { name: "Crème", hex: "#e9ddc7" },
-  ];
   const toggle = (value: string, values: string[], update: (values: string[]) => void) => {
     update(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
     setPage(1);
   };
+  const resetFilters = () => {
+    setMinPrice("");
+    setMaxPrice("");
+    setSizes([]);
+    setColors([]);
+    setBrands([]);
+    setInStock(false);
+    setOnSale(false);
+    setPage(1);
+  };
   const filterPanel = (
     <aside className="rounded-lg border border-line p-4">
-      <h2 className="mb-3 border-b border-line pb-3 text-sm font-bold">Filtres</h2>
+      <div className="mb-3 flex items-center justify-between border-b border-line pb-3">
+        <h2 className="text-sm font-bold">Filtres</h2>
+        <button type="button" onClick={resetFilters} className="text-xs font-medium text-muted underline underline-offset-2 hover:text-brand">Réinitialiser</button>
+      </div>
       <details open className="border-b border-line py-3">
         <summary className="cursor-pointer text-sm font-semibold">Catégories</summary>
         <div className="mt-3 space-y-2 text-sm">
-          <button onClick={() => { setParams({}); setPage(1); }} className={`block text-left ${!category ? "font-semibold text-brand" : "text-muted hover:text-ink"}`}>Toutes les catégories</button>
-          {categories.map(({ _id, name }) => <button key={_id} onClick={() => { setParams({ categorie: name }); setPage(1); }} className={`block text-left ${category === name ? "font-semibold text-brand" : "text-muted hover:text-ink"}`}>{name}</button>)}
+          <button onClick={() => { navigate("/catalogue"); setPage(1); }} className={`block text-left ${!category ? "font-semibold text-brand" : "text-muted hover:text-ink"}`}>Toutes les catégories</button>
+          {categories.map(({ _id, name }) => <button key={_id} onClick={() => { navigate(categoryPath(name)); setPage(1); }} className={`block text-left ${category === name ? "font-semibold text-brand" : "text-muted hover:text-ink"}`}>{name}</button>)}
         </div>
       </details>
       <details open className="border-b border-line py-3">
@@ -457,7 +497,7 @@ function CatalogPage({ products: allProducts, categories, favorites, toggleFavor
       </details>
       <details open className="border-b border-line py-3">
         <summary className="cursor-pointer text-sm font-semibold">Taille</summary>
-        <div className="mt-3 flex flex-wrap gap-2">{sizeOptions.map((size) => <button key={size} onClick={() => toggle(size, sizes, setSizes)} className={`min-w-9 rounded-full border px-2.5 py-1.5 text-xs ${sizes.includes(size) ? "border-ink bg-ink text-white" : "border-line hover:border-ink"}`}>{size}</button>)}</div>
+        <div className="mt-3 flex flex-wrap gap-2">{sizeOptions.map((size) => <button key={size} onClick={() => toggle(size, sizes, setSizes)} aria-pressed={sizes.includes(size)} className={`min-w-9 rounded-full border px-2.5 py-1.5 text-xs ${sizes.includes(size) ? "border-ink bg-ink text-white" : "border-line hover:border-ink"}`}>{size}</button>)}</div>
       </details>
       <details open className="border-b border-line py-3">
         <summary className="cursor-pointer text-sm font-semibold">Couleur</summary>
@@ -466,7 +506,7 @@ function CatalogPage({ products: allProducts, categories, favorites, toggleFavor
       </details>
       <details open className="border-b border-line py-3">
         <summary className="cursor-pointer text-sm font-semibold">Marque</summary>
-        <div className="mt-3 space-y-2">{["ZARA", "Mango", "Adidas", "Stradivarius", "Bershka"].map((brand) => <label key={brand} className="flex cursor-pointer items-center gap-2 text-sm text-muted"><input type="checkbox" checked={brands.includes(brand)} onChange={() => toggle(brand, brands, setBrands)} className="accent-brand" />{brand}</label>)}</div>
+        <div className="mt-3 space-y-2">{brandOptions.map((brand) => <label key={brand} className="flex cursor-pointer items-center gap-2 text-sm text-muted"><input type="checkbox" checked={brands.includes(brand)} onChange={() => toggle(brand, brands, setBrands)} className="accent-brand" />{brand}</label>)}</div>
       </details>
       <details open className="py-3">
         <summary className="cursor-pointer text-sm font-semibold">Disponibilité</summary>
@@ -545,7 +585,7 @@ function ProductPage({ products, addToCart, favorites, toggleFavorite }: { produ
 
   return (
     <main className="container-x mb-20 mt-7">
-      <p className="mb-6 text-xs text-muted"><Link to="/" className="hover:text-brand">Accueil</Link><span className="mx-2">›</span><Link to={`/catalogue?categorie=${encodeURIComponent(product.category)}`} className="hover:text-brand">{product.category}</Link><span className="mx-2">›</span>{product.name}</p>
+      <p className="mb-6 text-xs text-muted"><Link to="/" className="hover:text-brand">Accueil</Link><span className="mx-2">›</span><Link to={categoryPath(product.category)} className="hover:text-brand">{product.category}</Link><span className="mx-2">›</span>{product.name}</p>
       <div className="grid items-start gap-8 lg:grid-cols-2 lg:gap-12">
         <section className="grid gap-3 sm:grid-cols-[76px_minmax(0,1fr)]">
           <div className="order-2 flex gap-2 overflow-x-auto sm:order-1 sm:flex-col">
@@ -664,8 +704,14 @@ function CartPage({ products, cart, updateQuantity, removeFromCart, clearCart }:
 function CheckoutPage({ products, cart, clearCart }: { products: DemoProduct[]; cart: CartLine[]; clearCart: () => void }) {
   const [delivery, setDelivery] = useState("home");
   const [payment, setPayment] = useState("cash");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState(() => getAuthSession()?.user.email ?? "");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const contactForm = useRef<HTMLFormElement>(null);
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -677,8 +723,16 @@ function CheckoutPage({ products, cart, clearCart }: { products: DemoProduct[]; 
 
   async function confirmOrder() {
     setNotice("");
-    if (!cart.length || !address.trim() || !phone.trim() || !accepted) {
-      setNotice("Renseignez le téléphone et l'adresse, puis acceptez les conditions de vente.");
+    if (!cart.length) {
+      setNotice("Votre panier est vide.");
+      return;
+    }
+    if (!contactForm.current?.reportValidity()) {
+      setNotice("Vérifiez les coordonnées de livraison indiquées.");
+      return;
+    }
+    if (!accepted) {
+      setNotice("Veuillez accepter les conditions de vente avant de confirmer.");
       return;
     }
     if (!getAuthSession()) {
@@ -696,7 +750,8 @@ function CheckoutPage({ products, cart, clearCart }: { products: DemoProduct[]; 
             ...(line.variantId ? { variant: line.variantId } : {}),
             quantity: line.quantity,
           })),
-          shippingAddress: address.trim(),
+          email: email.trim(),
+          shippingAddress: `${firstName.trim()} ${lastName.trim()}, ${address.trim()}, ${postalCode.trim()} ${city.trim()}`,
           phone: phone.trim(),
         },
       });
@@ -738,15 +793,15 @@ function CheckoutPage({ products, cart, clearCart }: { products: DemoProduct[]; 
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-sm font-bold text-brand">1</span>
               <div><h2 className="font-heading text-lg font-bold">Coordonnées de livraison</h2><p className="mt-1 text-xs text-muted">Où pouvons-nous vous joindre ?</p></div>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="text-xs font-semibold">Prénom<input autoComplete="given-name" placeholder="Votre prénom" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
-              <label className="text-xs font-semibold">Nom<input autoComplete="family-name" placeholder="Votre nom" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
-              <label className="text-xs font-semibold">Adresse e-mail<input type="email" autoComplete="email" placeholder="vous@exemple.com" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
-              <label className="text-xs font-semibold">Téléphone<input required type="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+216 XX XXX XXX" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
-              <label className="text-xs font-semibold sm:col-span-2">Adresse complète<input required autoComplete="street-address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Numéro, rue, ville et code postal" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
-              <label className="text-xs font-semibold">Ville<input autoComplete="address-level2" placeholder="Votre ville" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
-              <label className="text-xs font-semibold">Code postal<input autoComplete="postal-code" placeholder="0000" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
-            </div>
+            <form ref={contactForm} onSubmit={(event) => event.preventDefault()} className="grid gap-4 sm:grid-cols-2">
+              <label className="text-xs font-semibold">Prénom<input required minLength={2} maxLength={60} pattern="[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ '’-]{1,59}" title="Saisissez un prénom valide." autoComplete="given-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="Votre prénom" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
+              <label className="text-xs font-semibold">Nom<input required minLength={2} maxLength={60} pattern="[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ '’-]{1,59}" title="Saisissez un nom valide." autoComplete="family-name" value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Votre nom" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
+              <label className="text-xs font-semibold">Adresse e-mail<input required type="email" maxLength={254} autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="vous@exemple.com" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
+              <label className="text-xs font-semibold">Téléphone<input required type="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} pattern="(?:\+|00)?[1-9](?:[\s().-]?[0-9]){7,14}" title="Saisissez un numéro valide, par exemple +216 12 345 678." maxLength={25} placeholder="+216 XX XXX XXX" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
+              <label className="text-xs font-semibold sm:col-span-2">Adresse complète<input required minLength={5} maxLength={300} pattern="[\s\S]*\S[\s\S]*" title="Saisissez une adresse contenant au moins un caractère non blanc." autoComplete="street-address" value={address} onChange={(event) => setAddress(event.target.value)} placeholder="Numéro et nom de rue" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
+              <label className="text-xs font-semibold">Ville<input required minLength={2} maxLength={60} pattern="[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ '’-]{1,59}" title="Saisissez un nom de ville valide." autoComplete="address-level2" value={city} onChange={(event) => setCity(event.target.value)} placeholder="Votre ville" className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
+              <label className="text-xs font-semibold">Code postal<input required inputMode="numeric" pattern="[0-9]{4}" maxLength={4} autoComplete="postal-code" value={postalCode} onChange={(event) => setPostalCode(event.target.value)} placeholder="0000" title="Saisissez un code postal tunisien à 4 chiffres." className="input mt-1.5 rounded-xl py-3 font-normal normal-case tracking-normal" /></label>
+            </form>
           </section>
 
           <section className="rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-7">
@@ -951,11 +1006,10 @@ function AccountPage() {
               <button type="button" onClick={() => { setMode("signup"); setNotice(""); }} aria-pressed={isSignup} className={`rounded-lg px-3 py-2.5 text-sm font-semibold transition ${isSignup ? "bg-white text-ink shadow-sm" : "text-muted hover:text-ink"}`}>Inscription</button>
             </div>
 
-            <button type="button" onClick={() => setNotice("La connexion Google sera disponible lorsque l’authentification sera configurée.")} className="flex w-full items-center justify-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-sm font-semibold transition hover:border-ink/30 hover:bg-soft/50">
+       {/*     <button type="button" onClick={() => setNotice("La connexion Google sera disponible lorsque l’authentification sera configurée.")} className="flex w-full items-center justify-center gap-3 rounded-xl border border-line bg-white px-4 py-3 text-sm font-semibold transition hover:border-ink/30 hover:bg-soft/50">
               <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z" /><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44Z" /><path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.3H5.8a20 20 0 0 0 0 17.8l6.8-5.3Z" /><path fill="#EA4335" d="M24 12c3 0 5.7 1 7.8 3l5.8-5.8A19.4 19.4 0 0 0 24 4 20 20 0 0 0 5.8 15.1l6.8 5.3C14.2 15.6 18.7 12 24 12Z" /></svg>
               Continuer avec Google
-            </button>
-
+            </button>*/}
             <div className="my-6 flex items-center gap-3 text-[10px] font-medium uppercase tracking-[0.16em] text-muted"><span className="h-px flex-1 bg-line" />ou par e-mail<span className="h-px flex-1 bg-line" /></div>
 
             <form onSubmit={submit} className="space-y-4">
@@ -1096,6 +1150,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={productsLoading ? <p role="status" className="container-x py-12 text-center text-sm text-muted">Chargement du catalogue…</p> : <HomePage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
         <Route path="/catalogue" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
+        <Route path="/catalogue/:categorySlug" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
         <Route path="/nouveautes" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
         <Route path="/promotions" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
         <Route path="/favoris" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
@@ -1106,7 +1161,7 @@ export default function App() {
         <Route path="*" element={<NotFound />} />
       </Routes>
       <footer className="mt-20 border-t border-line bg-ink py-10 text-white">
-        <div className="container-x grid gap-8 sm:grid-cols-3"><div><Link to="/" className="font-heading text-xl font-semibold tracking-[0.14em] text-white">HAFFELI <span className="text-brand">SHOP</span></Link><p className="mt-2 max-w-xs text-sm text-white/65">Mode et élégance,<br />soigneusement sélectionnées.</p></div><div><h2 className="mb-3 text-sm font-semibold">Navigation</h2><div className="grid gap-2 text-xs text-white/65"><Link to="/" className="hover:text-white">Accueil</Link><Link to="/catalogue" className="hover:text-white">Boutique</Link><Link to="/nouveautes" className="hover:text-white">Nouveautés</Link><Link to="/promotions" className="hover:text-white">Promotions</Link><Link to="/admin/mouvements" className="hover:text-white">Panneau du solde · accès administrateur</Link></div></div><div><h2 className="mb-3 text-sm font-semibold">À propos</h2><div className="grid gap-2 text-xs text-white/65"><span>Notre histoire</span><span>Livraison & retours</span><span>Contact +216  28229883 </span><a href="https://www.instagram.com/haffeli_shop/" target="_blank" rel="noopener noreferrer" aria-label="Suivez Haffeli Shop sur Instagram (ouvre un nouvel onglet)" className="inline-flex items-center gap-2 hover:text-white">Instagram</a></div></div><p className="border-t border-white/20 pt-4 text-center text-[11px] text-white/55 sm:col-span-3">© 2026 Haffeli Shop. Boutique de démonstration React.</p></div>
+        <div className="container-x grid gap-8 sm:grid-cols-3"><div><Link to="/" className="font-heading text-xl font-semibold tracking-[0.14em] text-white">HAFFELI <span className="text-brand">SHOP</span></Link><p className="mt-2 max-w-xs text-sm text-white/65">Mode et élégance,<br />soigneusement sélectionnées.</p></div><div><h2 className="mb-3 text-sm font-semibold">Navigation</h2><div className="grid gap-2 text-xs text-white/65"><Link to="/" className="hover:text-white">Accueil</Link><Link to="/catalogue" className="hover:text-white">Boutique</Link><Link to="/nouveautes" className="hover:text-white">Nouveautés</Link><Link to="/promotions" className="hover:text-white">Promotions</Link><Link to="/admin/mouvements" className="hover:text-white">Panneau du solde · accès administrateur</Link></div></div><div><h2 className="mb-3 text-sm font-semibold">À propos</h2><div className="grid gap-2 text-xs text-white/65"><span>Notre histoire</span><span>Livraison & retours</span><span>Contact +216  28229883 </span><a href="https://www.instagram.com/haffeli_shop/" target="_blank" rel="noopener noreferrer" aria-label="Suivez Haffeli Shop sur Instagram (ouvre un nouvel onglet)" className="inline-flex items-center gap-2 hover:text-white">Instagram</a></div></div><p className="border-t border-white/20 pt-4 text-center text-[11px] text-white/55 sm:col-span-3">© 2026 Haffeli Shop. Boutique de nike en monastir.</p></div>
       </footer>
     </div>
   );

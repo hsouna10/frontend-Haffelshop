@@ -54,6 +54,7 @@ export type ApiProduct = {
 export type ApiOrder = {
   _id: string;
   orderNumber?: string;
+  email?: string;
   user: { name: string; email?: string } | string | null;
   items: {
     product: Pick<ApiProduct, "_id" | "name" | "sku"> | string | null;

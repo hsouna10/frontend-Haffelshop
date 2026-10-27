@@ -37,7 +37,7 @@ const translations: Record<string, string> = {
   "At least one color is required for variants": "Ajoutez au moins une couleur pour créer des variantes.",
   "Sizes are required for clothing and shoes": "La taille ou la pointure est obligatoire pour les vêtements et les chaussures.",
   "Color and size combinations must be unique": "Chaque combinaison de couleur et de taille doit être unique.",
-  "Variant SKUs must be unique within a product": "Les références des variantes doivent être uniques pour ce produit.",
+  "A variant SKU can only be reused for a different size within the same product": "Un SKU peut être partagé entre les variantes d’un même produit uniquement si leurs tailles sont différentes.",
   "Provide exactly one positive integer: increase or decrease": "Indiquez une seule quantité entière positive à ajouter ou à retirer.",
   "Start date must be before end date": "La date de début doit précéder la date de fin.",
   "A custom period requires both from and to dates": "Une période personnalisée nécessite une date de début et une date de fin.",
@@ -180,6 +180,9 @@ export function handleInvalidField(event: FormEvent<HTMLElement>) {
     message = `La valeur du champ « ${label} » doit être au moins ${field.min}.`;
   } else if (validity.rangeOverflow && field instanceof HTMLInputElement) {
     message = `La valeur du champ « ${label} » ne doit pas dépasser ${field.max}.`;
+  }
+  else if (validity.patternMismatch && field instanceof HTMLInputElement) {
+    message = field.title || `Le format du champ « ${label} » n’est pas valide.`;
   }
   else if (validity.stepMismatch) message = `La valeur du champ « ${label} » n’est pas valide.`;
   showValidationAlert(message);

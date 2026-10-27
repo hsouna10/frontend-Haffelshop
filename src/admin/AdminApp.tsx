@@ -23,7 +23,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   apiRequest,
   clearAuthSession,
@@ -107,8 +107,8 @@ const clothingTypes = [
   "Shorts",
   "Leggings",
   "Vestes et manteaux",
-  "Maillots de sport",
-  "Vêtements de football",
+  "Hoodies",
+  "Vêtements pour enfants",
   "Vêtements de basketball",
   "Vêtements de running",
 ];
@@ -118,7 +118,7 @@ const shoeTypes = [
   "Football",
   "Basketball",
   "Training / Fitness",
-  "Skateboard",
+  "Claquette",
   "Randonnée et outdoor",
   "Chaussures pour enfants",
 ];
@@ -164,11 +164,6 @@ const userEmail = (order: ApiOrder) =>
   order.user && typeof order.user === "object" ? order.user.email : "";
 const newId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 24);
 const duplicateProductSku = (input: ProductInput, products: ApiProduct[], editingId: string | null) => {
-  const entries = [
-    { label: "produit", value: input.sku },
-    ...input.variants.map((variant, index) => ({ label: `variante ${index + 1}`, value: variant.sku })),
-  ].filter((entry) => entry.value.trim());
-  const seen = new Map<string, string>();
   const duplicates: string[] = [];
   const existingSkus = new Map<string, string>();
   products.filter((product) => product._id !== editingId).forEach((product) => {
@@ -177,17 +172,32 @@ const duplicateProductSku = (input: ProductInput, products: ApiProduct[], editin
       if (variant.sku) existingSkus.set(variant.sku.trim().toUpperCase(), `${product.name} (variante)`);
     });
   });
-  for (const entry of entries) {
-    const sku = entry.value.trim().toUpperCase();
-    const firstLabel = seen.get(sku);
-    if (firstLabel) duplicates.push(`${sku} (${firstLabel} et ${entry.label})`);
-    else {
-      seen.set(sku, entry.label);
+  const productSku = input.sku.trim().toUpperCase();
+  const seenVariantSizes = new Map<string, Set<string>>();
+
+  if (productSku) {
+    const existing = existingSkus.get(productSku);
+    if (existing) duplicates.push(`${productSku} est déjà utilisé par « ${existing} »`);
+  }
+
+  input.variants.forEach((variant, index) => {
+    const sku = variant.sku.trim().toUpperCase();
+    if (!sku) return;
+    if (sku === productSku) {
+      duplicates.push(`${sku} est utilisé pour le produit et la variante ${index + 1}`);
+    }
+    const sizes = seenVariantSizes.get(sku) ?? new Set<string>();
+    const size = variant.size.trim().toLocaleLowerCase();
+    if (sizes.has(size)) {
+      duplicates.push(`${sku} est répété pour la taille « ${variant.size} »`);
+    } else {
+      sizes.add(size);
+      seenVariantSizes.set(sku, sizes);
       const existing = existingSkus.get(sku);
       if (existing) duplicates.push(`${sku} est déjà utilisé par « ${existing} »`);
     }
-  }
-  return duplicates.length ? `Chaque SKU doit être unique. Corrigez ou effacez : ${duplicates.join("; ")}.` : "";
+  });
+  return duplicates.length ? `Un SKU peut être partagé entre les variantes d’un même produit si leurs tailles diffèrent. Corrigez ou effacez : ${duplicates.join("; ")}.` : "";
 };
 
 const navItems = [
@@ -203,7 +213,7 @@ const navItems = [
 
 function AdminSidebar({ onClose, onLogout }: { onClose?: () => void; onLogout: () => void }) {
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-white/10 bg-[#211f1b] text-white lg:sticky lg:top-0 lg:h-screen lg:w-[272px] lg:border-b-0 lg:border-r lg:border-white/5">
+    <aside className="flex h-full min-h-0 w-full shrink-0 flex-col bg-[#211f1b] text-white lg:sticky lg:top-0 lg:h-screen lg:w-[272px] lg:border-r lg:border-white/5">
       <div className="flex items-center justify-between px-5 py-4 lg:px-6 lg:py-7">
         <Link to="/admin" className="flex items-center gap-3" onClick={onClose}>
           <img src="/haffeli-shop-mark.png" alt="" className="h-11 w-11 rounded-full border border-white/15 bg-white" />
@@ -211,14 +221,14 @@ function AdminSidebar({ onClose, onLogout }: { onClose?: () => void; onLogout: (
         </Link>
         {onClose && <button onClick={onClose} aria-label="Fermer le menu" className="rounded-lg p-2 text-white/70 hover:bg-white/10 lg:hidden"><X className="h-5 w-5" /></button>}
       </div>
-      <nav aria-label="Navigation administration" className="flex gap-1.5 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:overflow-visible lg:px-4">
+      <nav aria-label="Navigation administration" className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-3 pb-3 lg:px-4">
         {navItems.map(({ to, label, icon: Icon, end }) => (
-          <NavLink key={to} to={to} end={end} onClick={onClose} className={({ isActive }) => `flex shrink-0 items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium transition ${isActive ? "bg-[#d2b16f] text-[#211f1b]" : "text-white/60 hover:bg-white/[0.07] hover:text-white"}`}>
+          <NavLink key={to} to={to} end={end} onClick={onClose} className={({ isActive }) => `flex w-full shrink-0 items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium transition ${isActive ? "bg-[#d2b16f] text-[#211f1b]" : "text-white/60 hover:bg-white/[0.07] hover:text-white"}`}>
             <Icon className="h-[18px] w-[18px]" />{label}
           </NavLink>
         ))}
       </nav>
-      <div className="hidden p-4 lg:block">
+      <div className="mt-auto border-t border-white/10 p-4">
         <Link to="/" className="mb-2 flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-medium text-white/50 hover:bg-white/[0.07] hover:text-white"><ArrowLeft className="h-4 w-4" />Retour à la boutique</Link>
         <button onClick={onLogout} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-medium text-white/50 hover:bg-white/[0.07] hover:text-white"><LogOut className="h-4 w-4" />Déconnexion</button>
       </div>
@@ -235,7 +245,7 @@ function AdminLayout({ children, onLogout }: { children: ReactNode; onLogout: ()
   return (
     <div className="min-h-screen bg-[#f5f4f0] text-ink lg:flex" onInvalidCapture={handleInvalidField}>
       <div className="hidden lg:block"><AdminSidebar onLogout={onLogout} /></div>
-      {menuOpen && <div className="fixed inset-0 z-[80] bg-black/50 lg:hidden" onClick={() => setMenuOpen(false)}><div className="h-full w-[min(20rem,86vw)] bg-[#211f1b]" onClick={(event) => event.stopPropagation()}><AdminSidebar onClose={() => setMenuOpen(false)} onLogout={onLogout} /></div></div>}
+      {menuOpen && <div className="fixed inset-0 z-[80] bg-black/50 lg:hidden" onClick={() => setMenuOpen(false)}><div className="h-dvh w-[min(20rem,86vw)] overflow-hidden bg-[#211f1b]" onClick={(event) => event.stopPropagation()}><AdminSidebar onClose={() => setMenuOpen(false)} onLogout={onLogout} /></div></div>}
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-line/80 bg-white/85 px-4 backdrop-blur-2xl sm:px-7 lg:px-10">
           <div className="flex items-center gap-3">
@@ -911,6 +921,7 @@ function UsersPage({ users }: { users: ApiAdminUser[] }) {
 }
 
 export default function AdminApp() {
+  const navigate = useNavigate();
   const [session, setSession] = useState<AuthSession | null>(() => getAuthSession());
   const [products, setProducts] = useState<ApiProduct[]>([]);
   const [orders, setOrders] = useState<ApiOrder[]>([]);
@@ -965,6 +976,7 @@ export default function AdminApp() {
   function logout() {
     clearAuthSession();
     setSession(null);
+    navigate("/");
   }
 
   if (!session) return <main className="container-x py-16"><section className="mx-auto max-w-xl rounded-2xl border border-line bg-white p-8 text-center"><h1 className="text-2xl font-bold">Connexion administrateur requise</h1><p className="mt-3 text-sm text-muted">Connectez-vous avec un compte ayant le rôle administrateur pour accéder à cet espace.</p><Link to="/compte" className="mt-6 inline-flex rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white">Se connecter</Link></section></main>;
