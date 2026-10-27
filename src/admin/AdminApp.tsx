@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { createUUID } from "../utils/createUUID";
 import {
   apiRequest,
   clearAuthSession,
@@ -162,7 +163,7 @@ const userName = (order: ApiOrder) =>
   order.user && typeof order.user === "object" ? order.user.name : "Utilisateur supprimé";
 const userEmail = (order: ApiOrder) =>
   order.user && typeof order.user === "object" ? order.user.email : "";
-const newId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 24);
+const newId = () => createUUID().replace(/-/g, "").slice(0, 24);
 const duplicateProductSku = (input: ProductInput, products: ApiProduct[], editingId: string | null) => {
   const duplicates: string[] = [];
   const existingSkus = new Map<string, string>();

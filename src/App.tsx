@@ -24,6 +24,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import { createUUID } from "./utils/createUUID";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { DemoProduct } from "./lib/demo-data";
 import AdminApp from "./admin/AdminApp";
@@ -715,7 +716,7 @@ function CheckoutPage({ products, cart, clearCart }: { products: DemoProduct[]; 
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [idempotencyKey] = useState(() => createUUID());
   const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const steps = ["Livraison", "Expédition", "Paiement", "Confirmation"];
   const [notice, setNotice] = useState("");
