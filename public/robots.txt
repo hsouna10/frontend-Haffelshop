@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /compte
+Disallow: /favoris
+Disallow: /panier
+Disallow: /commande
+Disallow: /*?*
+
+Sitemap: https://haffeli-shop.com/sitemap.xml

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -160,51 +160,15 @@ const statusLabel = (status: string): OrderStatus => ({
   cancelled: "Annulée",
 }[status] as OrderStatus) ?? (statusValues.includes(status as OrderStatus) ? status as OrderStatus : "En attente");
 const userName = (order: ApiOrder) =>
-  order.user && typeof order.user === "object" ? order.user.name : "Utilisateur supprimé";
+  order.customerName || (order.user && typeof order.user === "object" ? order.user.name : "Utilisateur supprimé");
 const userEmail = (order: ApiOrder) =>
-  order.user && typeof order.user === "object" ? order.user.email : "";
+  (order.user && typeof order.user === "object" ? order.user.email : "") || order.email || "";
 const newId = () => createUUID().replace(/-/g, "").slice(0, 24);
-const duplicateProductSku = (input: ProductInput, products: ApiProduct[], editingId: string | null) => {
-  const duplicates: string[] = [];
-  const existingSkus = new Map<string, string>();
-  products.filter((product) => product._id !== editingId).forEach((product) => {
-    if (product.sku) existingSkus.set(product.sku.trim().toUpperCase(), `${product.name} (produit)`);
-    product.variants?.forEach((variant) => {
-      if (variant.sku) existingSkus.set(variant.sku.trim().toUpperCase(), `${product.name} (variante)`);
-    });
-  });
-  const productSku = input.sku.trim().toUpperCase();
-  const seenVariantSizes = new Map<string, Set<string>>();
-
-  if (productSku) {
-    const existing = existingSkus.get(productSku);
-    if (existing) duplicates.push(`${productSku} est déjà utilisé par « ${existing} »`);
-  }
-
-  input.variants.forEach((variant, index) => {
-    const sku = variant.sku.trim().toUpperCase();
-    if (!sku) return;
-    if (sku === productSku) {
-      duplicates.push(`${sku} est utilisé pour le produit et la variante ${index + 1}`);
-    }
-    const sizes = seenVariantSizes.get(sku) ?? new Set<string>();
-    const size = variant.size.trim().toLocaleLowerCase();
-    if (sizes.has(size)) {
-      duplicates.push(`${sku} est répété pour la taille « ${variant.size} »`);
-    } else {
-      sizes.add(size);
-      seenVariantSizes.set(sku, sizes);
-      const existing = existingSkus.get(sku);
-      if (existing) duplicates.push(`${sku} est déjà utilisé par « ${existing} »`);
-    }
-  });
-  return duplicates.length ? `Un SKU peut être partagé entre les variantes d’un même produit si leurs tailles diffèrent. Corrigez ou effacez : ${duplicates.join("; ")}.` : "";
-};
-
 const navItems = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/stock", label: "Stock", icon: Boxes },
   { to: "/admin/commandes", label: "Commandes", icon: ClipboardList },
+  { to: "/admin/creer-vente", label: "Ventes", icon: Plus },
   { to: "/admin/ventes", label: "Historique des ventes", icon: ChartNoAxesColumnIncreasing },
   { to: "/admin/mouvements", label: "Mouvements", icon: Wallet },
   { to: "/admin/produits", label: "Produits", icon: Package },
@@ -377,7 +341,7 @@ function OrderDetailsDialog({ id, onClose, onUpdate, onPayment }: {
           <div className="rounded-xl bg-soft p-4"><p className="text-xs text-muted">Client</p><p className="mt-1 font-semibold">{userName(order)}</p><p className="text-sm text-muted">{userEmail(order) || "E-mail indisponible"}</p><p className="mt-2 text-sm">Téléphone : {order.phone || "—"}</p></div>
           <div className="rounded-xl bg-soft p-4"><p className="text-xs text-muted">Livraison</p><p className="mt-1 whitespace-pre-wrap text-sm">{order.shippingAddress || "—"}</p><p className="mt-2 text-xs text-muted">{new Date(order.createdAt).toLocaleString("fr-FR")}</p></div>
         </div>
-        <div className="mt-5 overflow-x-auto rounded-xl border border-line"><table className="w-full min-w-[530px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr>{["Article", "Couleur", "Taille / pointure", "Qté", "Prix"].map((name) => <th key={name} className="px-3 py-3">{name}</th>)}</tr></thead><tbody className="divide-y divide-line">{order.items.map((item, index) => <tr key={`${item.sku ?? item.name}-${index}`}><td className="px-3 py-3 font-semibold">{item.name ?? (typeof item.product === "object" && item.product ? item.product.name : "Article supprimé")}<span className="block text-[10px] text-muted">{item.sku ?? (typeof item.product === "object" && item.product ? item.product.sku : "")}</span></td><td className="px-3 py-3">{item.color || "—"}</td><td className="px-3 py-3">{item.size || "—"}</td><td className="px-3 py-3">{item.quantity}</td><td className="px-3 py-3">{money(item.price * item.quantity)}</td></tr>)}</tbody></table></div>
+        <div className="mt-5 overflow-x-auto rounded-xl border border-line"><table className="w-full min-w-[530px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr>{["Article", "Couleur", "Taille / pointure", "Qté", "Prix"].map((name) => <th key={name} className="px-3 py-3">{name}</th>)}</tr></thead><tbody className="divide-y divide-line">{order.items.map((item, index) => <tr key={`${item.sku ?? item.name}-${index}`}><td className="px-3 py-3 font-semibold">{item.name ?? (typeof item.product === "object" && item.product ? item.product.name : "Article supprimé")}<span className="block text-[10px] text-muted">{item.sku ?? (typeof item.product === "object" && item.product ? item.product.sku : "")}</span>{item.adminPriceOverride && <span className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-900">Prix admin</span>}</td><td className="px-3 py-3">{item.color || "—"}</td><td className="px-3 py-3">{item.size || "—"}</td><td className="px-3 py-3">{item.quantity}</td><td className="px-3 py-3">{money(item.price * item.quantity)}</td></tr>)}</tbody></table></div>
         <p className="mt-3 text-right text-lg font-bold">Total : {money(order.total)}</p>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border border-line p-4"><p className="text-xs font-semibold text-muted">Statut de commande</p><span className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ${statusBadgeClass(order.status)}`}>{statusLabel(order.status)}</span><label className="mt-3 block text-xs font-semibold">Transition autorisée<select disabled={busy || !nextStates[state]?.length} value="" onChange={(event) => void changeStatus(event.target.value as OrderStatus)} className="mt-1.5 w-full rounded-lg border border-line bg-white px-3 py-2.5 text-sm disabled:bg-soft"><option value="">Choisir le prochain statut</option>{(nextStates[state] ?? []).map((value) => <option key={value} value={value}>{value}</option>)}</select></label></div>
@@ -387,6 +351,162 @@ function OrderDetailsDialog({ id, onClose, onUpdate, onPayment }: {
       </>}
     </section>
   </div>;
+}
+
+type AdminSaleInput = {
+  customerName: string;
+  email?: string;
+  phone?: string;
+  shippingAddress?: string;
+  items: { product: string; variant?: string; quantity: number; priceOverride?: number }[];
+};
+
+type AdminOrderLine = {
+  product: string;
+  variant: string;
+  quantity: number;
+  searchMode: "reference" | "name";
+  search: string;
+  customPrice: string;
+};
+
+function NewSalePage({ products, onCreate }: {
+  products: ApiProduct[];
+  onCreate: (input: AdminSaleInput) => Promise<boolean>;
+}) {
+  const navigate = useNavigate();
+  const [customerName, setCustomerName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [items, setItems] = useState<AdminOrderLine[]>([
+    { product: "", variant: "", quantity: 1, searchMode: "reference", search: "", customPrice: "" }
+  ]);
+  const [busy, setBusy] = useState(false);
+  const availableProducts = products.filter((product) =>
+    product.isActive !== false
+    && (product.variants?.length ? product.variants.some((variant) => variant.stock > 0) : product.stock > 0)
+  );
+  const total = items.reduce((sum, item) => {
+    const product = products.find((candidate) => candidate._id === item.product);
+    if (!product) return sum;
+    const variant = product.variants?.find((candidate) => candidate._id === item.variant);
+    return sum + (item.customPrice !== ""
+      ? Number(item.customPrice)
+      : variant?.priceOverride ?? product.salePrice ?? product.price) * item.quantity;
+  }, 0);
+
+  function updateItem(index: number, patch: Partial<AdminOrderLine>) {
+    setItems((current) => current.map((item, currentIndex) => currentIndex === index ? { ...item, ...patch } : item));
+  }
+
+  function matchingProducts(item: AdminOrderLine) {
+    const search = item.search.trim();
+    if (!search) return [];
+    if (item.searchMode === "reference") {
+      const reference = search.toLocaleUpperCase();
+      return availableProducts.filter((product) =>
+        product.sku?.trim().toLocaleUpperCase() === reference
+        || product.variants?.some((variant) =>
+          variant.stock > 0 && variant.sku?.trim().toLocaleUpperCase() === reference
+        )
+      );
+    }
+    const name = search.toLocaleLowerCase();
+    return availableProducts.filter((product) => product.name.toLocaleLowerCase().includes(name));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    if (!(await showConfirmAlert({
+      title: "Confirmer la vente",
+      text: "Cette vente sera enregistrée comme payée et ajoutée aux mouvements financiers.",
+      confirmButtonText: "Confirmer la vente",
+    }))) return;
+    setBusy(true);
+    try {
+      const saved = await onCreate({
+        customerName: customerName.trim(),
+        ...(email.trim() ? { email: email.trim() } : {}),
+        ...(phone.trim() ? { phone: phone.trim() } : {}),
+        ...(shippingAddress.trim() ? { shippingAddress: shippingAddress.trim() } : {}),
+        items: items.map(({ product, variant, quantity, customPrice }) => ({
+          product,
+          ...(variant ? { variant } : {}),
+          quantity,
+          ...(customPrice !== "" ? { priceOverride: Number(customPrice) } : {})
+        }))
+      });
+      if (saved) navigate("/admin/ventes");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <>
+    <PageTitle title="Nouvelle vente" text="Enregistrez une vente directe. Le paiement sera comptabilisé immédiatement." action={<Link to="/admin/ventes" className="rounded-xl border border-line bg-white px-4 py-2.5 text-sm font-semibold">Historique des ventes</Link>} />
+    <form onSubmit={(event) => void submit(event)} className="mx-auto max-w-4xl rounded-2xl border border-line bg-white p-5 shadow-sm sm:p-7">
+      <header><p className="text-[10px] font-bold uppercase tracking-widest text-brand">Espace admin</p><h2 className="mt-1 text-xl font-bold">Détails de la vente</h2><p className="mt-1 text-sm text-muted">Le stock est vérifié et réservé à la confirmation. Le prix spécial n’affecte que cette vente.</p></header>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <label className="text-xs font-semibold">Nom du client<input required maxLength={100} value={customerName} onChange={(event) => setCustomerName(event.target.value)} className="mt-1.5 w-full rounded-lg border border-line px-3 py-2.5 text-sm font-normal" /></label>
+        <label className="text-xs font-semibold">E-mail <span className="font-normal text-muted">(facultatif)</span><input type="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1.5 w-full rounded-lg border border-line px-3 py-2.5 text-sm font-normal" /></label>
+        <label className="text-xs font-semibold">Téléphone <span className="font-normal text-muted">(facultatif)</span><input maxLength={30} value={phone} onChange={(event) => setPhone(event.target.value)} className="mt-1.5 w-full rounded-lg border border-line px-3 py-2.5 text-sm font-normal" /></label>
+        <label className="text-xs font-semibold sm:col-span-2">Adresse de livraison <span className="font-normal text-muted">(facultative)</span><textarea maxLength={500} value={shippingAddress} onChange={(event) => setShippingAddress(event.target.value)} rows={2} className="mt-1.5 w-full rounded-lg border border-line px-3 py-2.5 text-sm font-normal" /></label>
+      </div>
+      <section className="mt-6"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-bold">Articles</h3><button type="button" disabled={!availableProducts.length} onClick={() => setItems((current) => [...current, { product: "", variant: "", quantity: 1, searchMode: "reference", search: "", customPrice: "" }])} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold disabled:opacity-50"><Plus className="mr-1 inline h-3.5 w-3.5" />Ajouter un article</button></div>
+        <div className="space-y-3">{items.map((item, index) => {
+          const product = products.find((candidate) => candidate._id === item.product);
+          const variants = product?.variants ?? [];
+          const skuVariants = item.searchMode === "reference" && item.search.trim()
+            ? variants.filter((variant) => variant.stock > 0 && variant.sku?.trim().toLocaleUpperCase() === item.search.trim().toLocaleUpperCase())
+            : [];
+          const availableVariants = skuVariants.length ? skuVariants : variants.filter((variant) => variant.stock > 0);
+          const selectedVariant = variants.find((variant) => variant._id === item.variant);
+          const colorName = selectedVariant && product?.colors?.find((color) => color._id === selectedVariant.color)?.name;
+          const price = selectedVariant?.priceOverride ?? product?.salePrice ?? product?.price ?? 0;
+          const stock = selectedVariant?.stock ?? product?.stock ?? 0;
+          const matches = matchingProducts(item);
+          return <div key={index} className="grid gap-2 rounded-xl border border-line p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px_auto]">
+            <div className="sm:col-span-2">
+              <div className="mb-2 flex gap-1" role="group" aria-label="Mode de recherche du produit">
+                <button type="button" aria-pressed={item.searchMode === "reference"} onClick={() => updateItem(index, { searchMode: "reference", search: "", product: "", variant: "", quantity: 1, customPrice: "" })} className={`rounded-md px-2.5 py-1.5 text-[10px] font-semibold ${item.searchMode === "reference" ? "bg-brand text-white" : "border border-line text-muted"}`}>1. Par référence</button>
+                <button type="button" aria-pressed={item.searchMode === "name"} onClick={() => updateItem(index, { searchMode: "name", search: "", product: "", variant: "", quantity: 1, customPrice: "" })} className={`rounded-md px-2.5 py-1.5 text-[10px] font-semibold ${item.searchMode === "name" ? "bg-brand text-white" : "border border-line text-muted"}`}>2. Par nom</button>
+              </div>
+              <label className="text-[11px] font-semibold">{item.searchMode === "reference" ? "Référence (SKU)" : "Nom du produit"}<input required value={item.search} onChange={(event) => updateItem(index, { search: event.target.value, product: "", variant: "", quantity: 1, customPrice: "" })} placeholder={item.searchMode === "reference" ? "Saisir la référence exacte" : "Rechercher un nom de produit"} className="mt-1 block w-full rounded-lg border border-line px-2.5 py-2.5 text-xs font-normal" /></label>
+              <label className="mt-2 block text-[11px] font-semibold">Produit<select required value={item.product} onChange={(event) => {
+                const nextProduct = availableProducts.find((candidate) => candidate._id === event.target.value);
+                const matchingVariants = item.searchMode === "reference" && nextProduct
+                  ? (nextProduct.variants ?? []).filter((variant) => variant.stock > 0 && variant.sku?.trim().toLocaleUpperCase() === item.search.trim().toLocaleUpperCase())
+                  : [];
+                updateItem(index, {
+                  product: event.target.value,
+                  variant: matchingVariants.length === 1 ? matchingVariants[0]._id : "",
+                quantity: 1,
+                customPrice: ""
+                });
+              }} className="mt-1 block w-full rounded-lg border border-line bg-white px-2.5 py-2.5 text-xs font-normal"><option value="">{item.search ? matches.length ? "Choisir un résultat" : "Aucun résultat — vérifiez la recherche ou choisissez l’option 2" : "Saisir une recherche ci-dessus"}</option>{matches.map((candidate) => {
+                const matchedVariantRefs = item.searchMode === "reference"
+                  ? (candidate.variants ?? []).filter((variant) => variant.stock > 0 && variant.sku?.trim().toLocaleUpperCase() === item.search.trim().toLocaleUpperCase()).length
+                  : 0;
+                const referenceMatch = item.searchMode === "reference" && candidate.sku?.trim().toLocaleUpperCase() === item.search.trim().toLocaleUpperCase() ? candidate.sku : item.search;
+                return <option key={candidate._id} value={candidate._id}>{candidate.name}{item.searchMode === "reference" ? ` · Réf. ${referenceMatch}${matchedVariantRefs ? ` (${matchedVariantRefs} variante${matchedVariantRefs > 1 ? "s" : ""})` : ""}` : candidate.sku ? ` · Réf. ${candidate.sku}` : ""} · stock ${candidate.stock}</option>;
+              })}</select></label>
+            </div>
+            <label className="text-[11px] font-semibold">Variante{variants.length === 0 && <span className="font-normal text-muted"> (aucune)</span>}<select required={Boolean(variants.length)} disabled={!variants.length} value={item.variant} onChange={(event) => updateItem(index, { variant: event.target.value, quantity: 1, customPrice: "" })} className="mt-1 block w-full rounded-lg border border-line bg-white px-2.5 py-2.5 text-xs font-normal disabled:bg-soft"><option value="">{variants.length ? skuVariants.length ? "Choisir variante correspondante" : "Choisir couleur / taille" : "Sans variante"}</option>{availableVariants.map((variant) => <option key={variant._id} value={variant._id}>{[product?.colors?.find((color) => color._id === variant.color)?.name, variant.size].filter(Boolean).join(" · ") || "Variante"}{variant.sku ? ` · Réf. ${variant.sku}` : ""} · stock {variant.stock}</option>)}</select></label>
+            <label className="text-[11px] font-semibold">Quantité<input required type="number" min="1" max={Math.min(100, stock || 100)} value={item.quantity} onChange={(event) => updateItem(index, { quantity: Math.max(1, Number(event.target.value) || 1) })} className="mt-1 block w-full rounded-lg border border-line px-2.5 py-2.5 text-xs font-normal" /></label>
+            <button type="button" disabled={items.length === 1} onClick={() => setItems((current) => current.filter((_, currentIndex) => currentIndex !== index))} aria-label="Retirer cet article" className="self-end rounded-lg border border-red-200 px-3 py-2.5 text-xs font-semibold text-red-700 disabled:opacity-40">Retirer</button>
+            {product && <>
+              <label className="text-[11px] font-semibold sm:col-span-2">Prix de cette commande · réservé à l’admin<input type="number" min="0" step="0.001" value={item.customPrice} onChange={(event) => updateItem(index, { customPrice: event.target.value })} placeholder={price.toFixed(3)} className="mt-1 block w-full rounded-lg border border-line px-2.5 py-2.5 text-xs font-normal" /><span className="mt-1 block font-normal text-muted">Prix habituel : {money(price)} · laissez vide pour le conserver.</span></label>
+              <p className="text-[11px] text-muted sm:col-span-2">{colorName ? `${colorName}${selectedVariant?.size ? ` · ${selectedVariant.size}` : ""} · ` : ""}{money(item.customPrice === "" ? price : Number(item.customPrice))} l’unité · {stock} en stock</p>
+            </>}
+          </div>;
+        })}</div>
+        {!availableProducts.length && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Aucun produit actif en stock n’est disponible pour une nouvelle commande.</p>}
+      </section>
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4"><p className="text-lg font-bold">Total de la vente : {money(total)}<span className="ml-2 text-xs font-normal text-muted">confirmé comme encaissé</span></p><button disabled={busy || !availableProducts.length} className="rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Enregistrement…" : "Enregistrer la vente"}</button></div>
+    </form>
+  </>;
 }
 
 function OrdersPage({ onUpdate, onPayment }: {
@@ -572,19 +692,23 @@ function ColorFilePreview({ file }: { file: File }) {
 function ProductsPage({ products, categories, onSave, onDelete }: { products: ApiProduct[]; categories: ApiCategory[]; onSave: (id: string | null, input: ProductInput, image: File | null) => Promise<boolean>; onDelete: (id: string) => Promise<void> }) {
   const empty: ProductInput = { name: "", sku: "", description: "", price: 0, stock: 0, category: categories[0]?._id ?? "", image: "", slug: "", productType: "clothing", productSubtype: "", brand: "", salePrice: "", isActive: true, colors: [], variants: [] };
   const [query, setQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
   const [editing, setEditing] = useState<{ id: string | null; input: ProductInput } | null>(null);
   const [image, setImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [imageError, setImageError] = useState("");
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState(1);
-  const shown = useMemo(() => products.filter((product) => `${product.name} ${product.sku ?? ""} ${productCategory(product)}`.toLowerCase().includes(query.toLowerCase())), [products, query]);
-  const skuError = editing ? duplicateProductSku(editing.input, products, editing.id) : "";
-  const previousSkuError = useRef("");
-  useEffect(() => {
-    if (skuError && skuError !== previousSkuError.current) void showErrorAlert(skuError);
-    previousSkuError.current = skuError;
-  }, [skuError]);
+  const shown = useMemo(() => products.filter((product) => {
+    const matchesQuery = `${product.name} ${product.sku ?? ""} ${productCategory(product)}`.toLowerCase().includes(query.toLowerCase());
+    const matchesCategory = !categoryFilter || categoryId(product) === categoryFilter;
+    const price = product.salePrice ?? product.price;
+    const matchesMinPrice = minPrice === "" || price >= Number(minPrice);
+    const matchesMaxPrice = maxPrice === "" || price <= Number(maxPrice);
+    return matchesQuery && matchesCategory && matchesMinPrice && matchesMaxPrice;
+  }), [products, query, categoryFilter, minPrice, maxPrice]);
   const selectedCategoryFamily = editing
     ? categoryProductType(categories.find((category) => category._id === editing.input.category)?.name ?? "")
     : null;
@@ -740,7 +864,12 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
 
   return <>
     <PageTitle title="Produits" text="Créez, modifiez et supprimez les produits de la base de données." action={<button onClick={() => startEdit()} className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white"><Plus className="mr-1 inline h-4 w-4" />Ajouter un produit</button>} />
-    <label className="mb-5 flex max-w-lg items-center gap-2 rounded-xl border border-line bg-white px-4"><Search className="h-4 w-4 text-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Chercher un produit…" className="w-full py-3 text-sm outline-none" /></label>
+    <div className="mb-5 flex flex-wrap items-end gap-3">
+      <label className="flex min-w-56 flex-1 items-center gap-2 rounded-xl border border-line bg-white px-4"><Search className="h-4 w-4 shrink-0 text-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Chercher un produit…" className="w-full py-3 text-sm outline-none" /></label>
+      <label className="min-w-48 text-xs font-semibold text-ink">Catégorie<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="mt-1 block w-full rounded-xl border border-line bg-white px-3 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10"><option value="">Toutes les catégories</option>{categories.map((category) => <option key={category._id} value={category._id}>{category.name}</option>)}</select></label>
+      <label className="w-32 text-xs font-semibold text-ink">Prix min.<input type="number" min="0" step="0.001" value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder="Min." className="mt-1 block w-full rounded-xl border border-line bg-white px-3 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10" /></label>
+      <label className="w-32 text-xs font-semibold text-ink">Prix max.<input type="number" min="0" step="0.001" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="Max." className="mt-1 block w-full rounded-xl border border-line bg-white px-3 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10" /></label>
+    </div>
     <div className="overflow-x-auto rounded-2xl border border-line bg-white"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr>{["Produit", "SKU", "Catégorie", "Prix", "Couleurs / variantes", "Stock total", "Statut", "Actions"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line">{shown.map((product) => <tr key={product._id}><td className="px-5 py-4"><div className="flex items-center gap-3">{(product.image || product.colors?.[0]?.images[0]?.url) && <img src={product.image || product.colors?.[0]?.images[0]?.url} alt="" className="h-12 w-10 rounded-lg object-cover" />}<span className="font-semibold">{product.name}</span></div></td><td className="px-5 py-4 text-muted">{product.sku || "—"}</td><td className="px-5 py-4">{productCategory(product)}</td><td className="px-5 py-4">{money(product.salePrice ?? product.price)}</td><td className="px-5 py-4">{product.colors?.length ?? 0} couleurs · {product.variants?.length ?? 0} variantes</td><td className="px-5 py-4 font-semibold">{product.stock}</td><td className="px-5 py-4">{product.isActive === false ? "Inactif" : "Actif"}</td><td className="px-5 py-4"><div className="flex gap-2"><button onClick={() => startEdit(product)} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:bg-soft">Modifier</button><button onClick={() => void confirmDelete(product)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">Supprimer</button></div></td></tr>)}</tbody></table>{!shown.length && <p className="p-10 text-center text-sm text-muted">Aucun produit.</p>}</div>
     {editing && <div role="dialog" aria-modal="true" aria-labelledby="product-form-title" className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-[#171612]/60 p-3 backdrop-blur-sm sm:p-6"><form onSubmit={(event) => void submit(event)} className="my-auto max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/70 bg-[#fffefa] shadow-[0_32px_100px_rgba(0,0,0,0.28)]">
       <header className="sticky top-0 z-10 border-b border-line/80 bg-[#fffefa]/95 px-5 py-5 backdrop-blur-md sm:px-8">
@@ -858,7 +987,7 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
             }
             setStep(2);
           }} className="rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-50">Suivant<ArrowUpRight className="ml-1 inline h-4 w-4" /></button>
-          : <button type="submit" name="saveProduct" disabled={!categories.length || saving || Boolean(imageError) || Boolean(skuError)} className="rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-50">{saving ? "Envoi…" : "Enregistrer le produit"}</button>}
+          : <button type="submit" name="saveProduct" disabled={!categories.length || saving || Boolean(imageError)} className="rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-50">{saving ? "Envoi…" : "Enregistrer le produit"}</button>}
       </footer>
     </form></div>}
   </>;
@@ -988,6 +1117,10 @@ export default function AdminApp() {
   else if (path === "/admin/commandes") page = <OrdersPage
     onUpdate={async (id, status) => runAction(() => apiRequest(`/admin/orders/${id}/status`, { method: "PATCH", body: { status } }), true, true)}
     onPayment={async (id, status) => runAction(() => apiRequest(`/admin/orders/${id}/payment`, { method: "PATCH", body: { status } }), true, true)}
+  />;
+  else if (path === "/admin/creer-vente") page = <NewSalePage
+    products={products}
+    onCreate={async (input) => runAction(() => apiRequest("/admin/sales", { method: "POST", body: input }), true, true)}
   />;
   else if (path === "/admin/ventes") page = <SalesPage
     onUpdate={async (id, status) => runAction(() => apiRequest(`/admin/orders/${id}/status`, { method: "PATCH", body: { status } }), true, true)}

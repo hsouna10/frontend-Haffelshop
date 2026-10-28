@@ -54,6 +54,7 @@ export type ApiProduct = {
 export type ApiOrder = {
   _id: string;
   orderNumber?: string;
+  customerName?: string;
   email?: string;
   user: { name: string; email?: string } | string | null;
   items: {
@@ -65,6 +66,7 @@ export type ApiOrder = {
     size?: string;
     image?: string;
     sku?: string;
+    adminPriceOverride?: boolean;
   }[];
   total: number;
   status: string;
