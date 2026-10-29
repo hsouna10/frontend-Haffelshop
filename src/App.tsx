@@ -247,7 +247,7 @@ function Header({ cartCount, favoriteCount, session, search, products }: { cartC
           </Link>
           <ProductSearchForm products={products} term={term} setTerm={setTerm} search={search} className="mx-auto hidden w-full max-w-[530px] items-center lg:flex" placeholder="Produit, référence ou SKU de variante..." />
           <div className="ml-auto flex shrink-0 items-center gap-0.5 justify-self-end sm:gap-1 lg:ml-0 lg:gap-2">
-            <Link to="/compte" aria-label={session?.user.role === "user" ? `Compte connecté : ${session.user.name}` : "Mon compte"} title={session?.user.role === "user" ? `Connecté : ${session.user.name}` : "Mon compte"} className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition hover:bg-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:h-10 sm:w-10 lg:h-11 lg:w-auto lg:max-w-36 lg:gap-2 lg:rounded-lg lg:px-3">
+            <Link to="/compte" aria-label={session?.user.role === "user" ? `Compte connecté : ${session.user.name}` : "Mon compte"} title={session?.user.role === "user" ? `Connecté : ${session.user.name}` : "Mon compte"} className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition hover:bg-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand max-[359px]:hidden sm:h-10 sm:w-10 lg:h-11 lg:w-auto lg:max-w-36 lg:gap-2 lg:rounded-lg lg:px-3">
               <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
                 <UserRound className="h-[18px] w-[18px]" />
                 {session?.user.role === "user" && <span aria-hidden="true" className="absolute -right-1 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />}
@@ -330,7 +330,7 @@ function ProductCard({ product, favorite, toggleFavorite }: { product: DemoProdu
       </button>
       <div className="min-w-0 space-y-1.5 px-3 pt-3 sm:px-4">
         <p className="truncate text-[10px] font-medium uppercase tracking-widest text-muted">{product.brand}</p>
-        <h3 className="truncate text-[13px] font-semibold"><Link to={`/produit/${product.slug}`} className="transition-colors hover:text-brand">{product.name}</Link></h3>
+        <h3 className="truncate text-[13px] font-semibold"><Link to={`/produit/${product.slug}`} className="block truncate transition-colors hover:text-brand">{product.name}</Link></h3>
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5"><span className={`text-sm font-bold ${discount ? "text-brand" : ""}`}>{money(product.price)}</span>{product.oldPrice && <span className="text-xs text-muted line-through">{money(product.oldPrice)}</span>}</div>
         <div className="flex gap-1.5 pt-1"><span className="h-3.5 w-3.5 rounded-full border border-black/15" style={{ backgroundColor: product.colorHex }} title={product.color} /><span className="h-3.5 w-3.5 rounded-full border border-black/15 bg-stone-400" /><span className="h-3.5 w-3.5 rounded-full border border-black/15 bg-stone-200" /></div>
       </div>
@@ -598,21 +598,22 @@ function CatalogPage({ products: allProducts, categories, favorites, toggleFavor
       <h1 className="font-heading text-2xl font-semibold sm:text-3xl">{heading}</h1>
       <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted">{category ? `Découvrez notre sélection ${category.toLowerCase()}, pensée pour allier style, qualité et confort.` : "Découvrez nos pièces sélectionnées pour toutes les occasions et tous les styles."}</p>
       {term && <p className="mt-2 text-sm text-muted">Recherche : « {term} »</p>}
-      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[230px_minmax(0,1fr)]">
-        <details className="group lg:contents">
+      <div className="mt-6 grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-[230px_minmax(0,1fr)]">
+        <details className="group min-w-0 lg:contents">
           <summary className="mb-3 flex cursor-pointer list-none items-center justify-between rounded-md border border-line px-4 py-3 text-sm font-semibold lg:hidden">Filtrer et trier <ChevronDown className="h-4 w-4" /></summary>
           <div className="hidden group-open:block lg:sticky lg:top-36 lg:block">{filterPanel}</div>
         </details>
-        <section>
-          <div className="mb-5 flex flex-wrap items-center gap-3">
-            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-line px-3"><Search className="h-4 w-4 shrink-0 text-muted" /><input value={params.get("q") ?? ""} onChange={(event) => { const next = new URLSearchParams(params); if (event.target.value) { next.set("q", event.target.value); } else { next.delete("q"); } setParams(next); setPage(1); }} placeholder={`Rechercher ${category ? `un article ${category.toLowerCase()}` : "un produit, une marque"}...`} className="w-full py-2.5 text-sm outline-none" /></label>
-            <select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }} className="w-full rounded-md border border-line bg-white px-3 py-2.5 text-sm sm:w-auto"><option>Nouveautés</option><option>Pertinence</option><option>Prix croissant</option><option>Prix décroissant</option></select>
+        <section className="min-w-0">
+          <div className="mb-5 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <label className="flex min-w-0 items-center gap-2 rounded-md border border-line px-3"><Search className="h-4 w-4 shrink-0 text-muted" /><input value={params.get("q") ?? ""} onChange={(event) => { const next = new URLSearchParams(params); if (event.target.value) { next.set("q", event.target.value); } else { next.delete("q"); } setParams(next); setPage(1); }} placeholder={`Rechercher ${category ? `un article ${category.toLowerCase()}` : "un produit, une marque"}...`} className="w-full min-w-0 py-2.5 text-sm outline-none" /></label>
+            <select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }} className="w-full min-w-0 rounded-md border border-line bg-white px-3 py-2.5 text-sm sm:w-auto"><option>Nouveautés</option><option>Pertinence</option><option>Prix croissant</option><option>Prix décroissant</option></select>
             <span className="w-full text-xs text-muted sm:w-auto">{products.length} produits</span>
           </div>
           <ProductGrid products={pageProducts} favorites={favorites} toggleFavorite={toggleFavorite} columns={3} />
-          {pageCount > 1 && <nav aria-label="Pagination" className="mt-10 flex items-center justify-center gap-2">
+          {pageCount > 1 && <nav aria-label="Pagination" className="mt-10 flex flex-wrap items-center justify-center gap-2">
             <button disabled={page === 1} onClick={() => setPage(page - 1)} aria-label="Page précédente" className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-soft disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
-            {Array.from({ length: pageCount }, (_, index) => index + 1).map((number) => <button key={number} onClick={() => setPage(number)} aria-current={page === number ? "page" : undefined} className={`h-9 w-9 rounded-full text-sm ${page === number ? "bg-ink font-semibold text-white" : "hover:bg-soft"}`}>{number}</button>)}
+            <span className="px-2 text-sm text-muted md:hidden">Page {page} / {pageCount}</span>
+            {Array.from({ length: pageCount }, (_, index) => index + 1).map((number) => <button key={number} onClick={() => setPage(number)} aria-current={page === number ? "page" : undefined} className={`hidden h-9 w-9 rounded-full text-sm md:inline-flex md:items-center md:justify-center ${page === number ? "bg-ink font-semibold text-white" : "hover:bg-soft"}`}>{number}</button>)}
             <button disabled={page === pageCount} onClick={() => setPage(page + 1)} aria-label="Page suivante" className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-soft disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
           </nav>}
         </section>
