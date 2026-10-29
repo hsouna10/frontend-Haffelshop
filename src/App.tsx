@@ -142,7 +142,7 @@ function readStorage<T>(key: string, fallback: T): T {
   }
 }
 
-function Header({ cartCount, favoriteCount, search }: { cartCount: number; favoriteCount: number; search: (value: string) => void }) {
+function Header({ cartCount, favoriteCount, session, search }: { cartCount: number; favoriteCount: number; session: AuthSession | null; search: (value: string) => void }) {
   const [term, setTerm] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
@@ -177,7 +177,16 @@ function Header({ cartCount, favoriteCount, search }: { cartCount: number; favor
             <button type="submit" aria-label="Lancer la recherche" className="rounded-full bg-white p-2 text-muted transition hover:bg-brand hover:text-white"><ArrowRight className="h-4 w-4" /></button>
           </form>
           <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1 lg:ml-0 lg:gap-2">
-            <Link to="/compte" aria-label="Mon compte" className="group hidden h-11 min-w-12 flex-col items-center justify-center gap-1 rounded-lg px-2 transition hover:bg-soft lg:flex"><UserRound className="h-[18px] w-[18px]" /><span className="text-[10px] font-medium text-muted group-hover:text-ink">Mon compte</span></Link>
+            <Link to="/compte" aria-label={session?.user.role === "user" ? `Compte connecté : ${session.user.name}` : "Mon compte"} title={session?.user.role === "user" ? `Connecté : ${session.user.name}` : "Mon compte"} className="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand lg:h-11 lg:w-auto lg:max-w-36 lg:gap-2 lg:rounded-lg lg:px-3">
+              <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
+                <UserRound className="h-[18px] w-[18px]" />
+                {session?.user.role === "user" && <span aria-hidden="true" className="absolute -right-1 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />}
+              </span>
+              <span className="hidden min-w-0 flex-col items-start leading-tight lg:flex">
+                <span className="max-w-full truncate text-[10px] font-semibold text-ink">{session?.user.role === "user" ? session.user.name : "Mon compte"}</span>
+                {session?.user.role === "user" && <span className="text-[9px] font-medium text-emerald-700">Connecté</span>}
+              </span>
+            </Link>
             <Link to="/favoris" aria-label={`Favoris${favoriteCount ? `, ${favoriteCount} article${favoriteCount > 1 ? "s" : ""}` : ""}`} className="group relative flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-soft lg:h-11 lg:w-12 lg:flex-col lg:gap-0.5 lg:rounded-lg">
               <Heart className={`h-5 w-5 transition-colors group-hover:text-brand ${favoriteCount ? "fill-brand text-brand" : ""}`} />
               {favoriteCount > 0 && <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[9px] font-bold text-white lg:right-2">{favoriteCount > 99 ? "99+" : favoriteCount}</span>}
@@ -876,7 +885,7 @@ function NotFound() {
   return <main className="container-x my-24 text-center"><h1 className="font-heading text-3xl font-semibold">Article introuvable</h1><p className="mt-3 text-sm text-muted">Essayez de parcourir notre catalogue.</p><Link to="/catalogue" className="btn btn-dark mt-7">Voir le catalogue</Link></main>;
 }
 
-function AccountPage() {
+function AccountPage({ onSessionChange }: { onSessionChange: (session: AuthSession | null) => void }) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [showPassword, setShowPassword] = useState(false);
   const [notice, setNotice] = useState("");
@@ -921,6 +930,7 @@ function AccountPage() {
       });
       saveAuthSession(session);
       setSession(session);
+      onSessionChange(session);
       if (session.user.role === "admin") {
         navigate("/admin");
       } else {
@@ -942,7 +952,7 @@ function AccountPage() {
               <h1 className="mt-2 font-heading text-2xl font-bold sm:text-3xl">Bonjour, {session.user.name}</h1>
               <p className="mt-1 text-sm text-white/65">{session.user.email}</p>
             </div>
-            <button type="button" onClick={() => { clearAuthSession(); setSession(null); setOrders([]); }} className="rounded-xl border border-white/20 px-4 py-2.5 text-xs font-semibold transition hover:bg-white/10">Déconnexion</button>
+            <button type="button" onClick={() => { clearAuthSession(); setSession(null); onSessionChange(null); setOrders([]); }} className="rounded-xl border border-white/20 px-4 py-2.5 text-xs font-semibold transition hover:bg-white/10">Déconnexion</button>
           </div>
           <div className="mt-8 flex items-end justify-between gap-3">
             <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-brand">Votre activité</p><h2 className="mt-1 font-heading text-2xl font-bold">Mes commandes</h2></div>
@@ -1035,6 +1045,7 @@ export default function App() {
   const [products, setProducts] = useState<DemoProduct[]>([]);
   const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
+  const [authSession, setAuthSession] = useState<AuthSession | null>(() => getAuthSession());
   const [cart, setCart] = useState<CartLine[]>(() => readStorage<CartLine[]>("nova-cart", []).map((line) => ({
     ...line,
     productId: line.productId ?? "",
@@ -1146,7 +1157,7 @@ export default function App() {
   }
   return (
     <div className="min-h-screen" onInvalidCapture={handleInvalidField}>
-      <Header cartCount={cartCount} favoriteCount={favorites.length} search={search} />
+      <Header cartCount={cartCount} favoriteCount={favorites.length} session={authSession} search={search} />
       {productsLoading && <p role="status" className="container-x py-12 text-center text-sm text-muted">Chargement du catalogue…</p>}
       <Routes>
         <Route path="/" element={productsLoading ? <p role="status" className="container-x py-12 text-center text-sm text-muted">Chargement du catalogue…</p> : <HomePage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
@@ -1155,14 +1166,14 @@ export default function App() {
         <Route path="/nouveautes" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
         <Route path="/promotions" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
         <Route path="/favoris" element={<CatalogPage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
-        <Route path="/compte" element={<AccountPage />} />
+        <Route path="/compte" element={<AccountPage onSessionChange={setAuthSession} />} />
         <Route path="/produit/:slug" element={<ProductPage products={activeProducts} addToCart={addToCart} favorites={favorites} toggleFavorite={toggleFavorite} />} />
         <Route path="/panier" element={<CartPage products={products} cart={cart} updateQuantity={updateQuantity} removeFromCart={removeFromCart} clearCart={() => setCart([])} />} />
         <Route path="/commande" element={<CheckoutPage products={products} cart={cart} clearCart={() => setCart([])} />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
       <footer className="mt-20 border-t border-line bg-ink py-10 text-white">
-        <div className="container-x grid gap-8 sm:grid-cols-3"><div><Link to="/" className="font-heading text-xl font-semibold tracking-[0.14em] text-white">HAFFELI <span className="text-brand">SHOP</span></Link><p className="mt-2 max-w-xs text-sm text-white/65">Mode et élégance,<br />soigneusement sélectionnées.</p></div><div><h2 className="mb-3 text-sm font-semibold">Navigation</h2><div className="grid gap-2 text-xs text-white/65"><Link to="/" className="hover:text-white">Accueil</Link><Link to="/catalogue" className="hover:text-white">Boutique</Link><Link to="/nouveautes" className="hover:text-white">Nouveautés</Link><Link to="/promotions" className="hover:text-white">Promotions</Link><Link to="/admin/mouvements" className="hover:text-white">Panneau du solde · accès administrateur</Link></div></div><div><h2 className="mb-3 text-sm font-semibold">À propos</h2><div className="grid gap-2 text-xs text-white/65"><span>Notre histoire</span><span>Livraison & retours</span><span>Contact +216  28229883 </span><a href="https://www.instagram.com/haffeli_shop/" target="_blank" rel="noopener noreferrer" aria-label="Suivez Haffeli Shop sur Instagram (ouvre un nouvel onglet)" className="inline-flex items-center gap-2 hover:text-white">Instagram</a></div></div><p className="border-t border-white/20 pt-4 text-center text-[11px] text-white/55 sm:col-span-3">© 2026 Haffeli Shop. Boutique de nike en monastir.</p></div>
+        <div className="container-x grid gap-8 sm:grid-cols-3"><div><Link to="/" className="font-heading text-xl font-semibold tracking-[0.14em] text-white">HAFFELI <span className="text-brand">SHOP</span></Link><p className="mt-2 max-w-xs text-sm text-white/65">Mode et élégance,<br />soigneusement sélectionnées.</p></div><div><h2 className="mb-3 text-sm font-semibold">Navigation</h2><div className="grid gap-2 text-xs text-white/65"><Link to="/" className="hover:text-white">Accueil</Link><Link to="/catalogue" className="hover:text-white">Boutique</Link><Link to="/nouveautes" className="hover:text-white">Nouveautés</Link><Link to="/promotions" className="hover:text-white">Promotions</Link><Link to="/admin/mouvements" className="hover:text-white">Panneau du solde · accès administrateur</Link></div></div><div><h2 className="mb-3 text-sm font-semibold">À propos</h2><div className="grid gap-2 text-xs text-white/65"><span>Notre histoire</span><span>Livraison & retours</span><span>Contact +216  28229838 </span><a href="https://www.instagram.com/haffeli_shop/" target="_blank" rel="noopener noreferrer" aria-label="Suivez Haffeli Shop sur Instagram (ouvre un nouvel onglet)" className="inline-flex items-center gap-2 hover:text-white">Instagram</a></div></div><p className="border-t border-white/20 pt-4 text-center text-[11px] text-white/55 sm:col-span-3">© 2026 Haffeli Shop. Boutique de nike en monastir.</p></div>
       </footer>
     </div>
   );

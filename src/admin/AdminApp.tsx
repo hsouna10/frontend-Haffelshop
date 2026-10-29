@@ -26,7 +26,7 @@ import {
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { createUUID } from "../utils/createUUID";
 import {
-  apiRequest,
+  apiRequest as requestApi,
   clearAuthSession,
   getAuthSession,
   type ApiAdminUser,
@@ -164,6 +164,37 @@ const userName = (order: ApiOrder) =>
 const userEmail = (order: ApiOrder) =>
   (order.user && typeof order.user === "object" ? order.user.email : "") || order.email || "";
 const newId = () => createUUID().replace(/-/g, "").slice(0, 24);
+let pendingAdminMutations = 0;
+const adminRequestListeners = new Set<(isLoading: boolean) => void>();
+
+function apiRequest<T>(path: string, options?: Parameters<typeof requestApi>[1]): Promise<T> {
+  const isMutation = (options?.method ?? "GET").toUpperCase() !== "GET";
+  if (isMutation) {
+    pendingAdminMutations += 1;
+    adminRequestListeners.forEach((listener) => listener(true));
+  }
+
+  return requestApi<T>(path, options).finally(() => {
+    if (isMutation) {
+      pendingAdminMutations = Math.max(0, pendingAdminMutations - 1);
+      adminRequestListeners.forEach((listener) => listener(pendingAdminMutations > 0));
+    }
+  });
+}
+
+function useAdminRequestStatus() {
+  const [isLoading, setIsLoading] = useState(pendingAdminMutations > 0);
+
+  useEffect(() => {
+    const listener = (hasPendingRequests: boolean) => setIsLoading(hasPendingRequests);
+    adminRequestListeners.add(listener);
+    listener(pendingAdminMutations > 0);
+    return () => { adminRequestListeners.delete(listener); };
+  }, []);
+
+  return isLoading;
+}
+
 const navItems = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/stock", label: "Stock", icon: Boxes },
@@ -204,6 +235,7 @@ function AdminSidebar({ onClose, onLogout }: { onClose?: () => void; onLogout: (
 function AdminLayout({ children, onLogout }: { children: ReactNode; onLogout: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  const requestsLoading = useAdminRequestStatus();
   const activePage = navItems.find((item) => item.end ? location.pathname === item.to : location.pathname.startsWith(item.to));
   const title = activePage?.label ?? "Administration";
 
@@ -225,6 +257,12 @@ function AdminLayout({ children, onLogout }: { children: ReactNode; onLogout: ()
         </header>
         <main className="mx-auto max-w-[1500px] p-4 sm:p-7 lg:p-9">{children}</main>
       </div>
+      {requestsLoading && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/25 px-4 backdrop-blur-[2px]" role="status" aria-live="polite" aria-label="Enregistrement en cours">
+        <div className="flex min-w-48 flex-col items-center gap-3 rounded-2xl border border-line bg-white px-8 py-6 shadow-2xl">
+          <RefreshCw className="h-8 w-8 animate-spin text-brand" />
+          <span className="text-sm font-semibold text-ink">Enregistrement en cours…</span>
+        </div>
+      </div>}
     </div>
   );
 }
