@@ -328,10 +328,10 @@ function ProductCard({ product, favorite, toggleFavorite }: { product: DemoProdu
       <button onClick={() => toggleFavorite(product.slug)} aria-label={favorite ? "Retirer des favoris" : "Ajouter aux favoris"} aria-pressed={favorite} className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-white/70 bg-white/90 shadow-sm backdrop-blur transition hover:scale-110 hover:text-brand sm:right-4 sm:top-4">
         <Heart className={`h-5 w-5 ${favorite ? "fill-brand text-brand" : ""}`} />
       </button>
-      <div className="space-y-1.5 px-3 pt-3 sm:px-4">
-        <p className="text-[10px] font-medium uppercase tracking-widest text-muted">{product.brand}</p>
+      <div className="min-w-0 space-y-1.5 px-3 pt-3 sm:px-4">
+        <p className="truncate text-[10px] font-medium uppercase tracking-widest text-muted">{product.brand}</p>
         <h3 className="truncate text-[13px] font-semibold"><Link to={`/produit/${product.slug}`} className="transition-colors hover:text-brand">{product.name}</Link></h3>
-        <div className="flex items-baseline gap-2"><span className={`text-sm font-bold ${discount ? "text-brand" : ""}`}>{money(product.price)}</span>{product.oldPrice && <span className="text-xs text-muted line-through">{money(product.oldPrice)}</span>}</div>
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5"><span className={`text-sm font-bold ${discount ? "text-brand" : ""}`}>{money(product.price)}</span>{product.oldPrice && <span className="text-xs text-muted line-through">{money(product.oldPrice)}</span>}</div>
         <div className="flex gap-1.5 pt-1"><span className="h-3.5 w-3.5 rounded-full border border-black/15" style={{ backgroundColor: product.colorHex }} title={product.color} /><span className="h-3.5 w-3.5 rounded-full border border-black/15 bg-stone-400" /><span className="h-3.5 w-3.5 rounded-full border border-black/15 bg-stone-200" /></div>
       </div>
     </article>
@@ -340,7 +340,7 @@ function ProductCard({ product, favorite, toggleFavorite }: { product: DemoProdu
 
 function ProductGrid({ products, favorites, toggleFavorite, columns = 4 }: { products: DemoProduct[]; favorites: string[]; toggleFavorite: (slug: string) => void; columns?: 3 | 4 }) {
   if (!products.length) return <p className="rounded-lg bg-soft px-5 py-12 text-center text-muted">Aucun article ne correspond à votre recherche.</p>;
-  return <div className={`grid grid-cols-2 gap-x-4 gap-y-10 sm:gap-x-6 ${columns === 3 ? "lg:grid-cols-3" : "md:grid-cols-3 xl:grid-cols-4"}`}>{products.map((product) => <ProductCard key={product.slug} product={product} favorite={favorites.includes(product.slug)} toggleFavorite={toggleFavorite} />)}</div>;
+  return <div className={`grid grid-cols-2 gap-x-3 gap-y-7 sm:gap-x-6 sm:gap-y-10 ${columns === 3 ? "md:grid-cols-3" : "md:grid-cols-3 xl:grid-cols-4"}`}>{products.map((product) => <ProductCard key={product.slug} product={product} favorite={favorites.includes(product.slug)} toggleFavorite={toggleFavorite} />)}</div>;
 }
 
 function HomePage({ products, categories, favorites, toggleFavorite }: { products: DemoProduct[]; categories: ApiCategory[]; favorites: string[]; toggleFavorite: (slug: string) => void }) {
@@ -442,7 +442,7 @@ function HomePage({ products, categories, favorites, toggleFavorite }: { product
         </div>
       </section>
       <section className="container-x mt-20 lg:mt-28">
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0"><h2 className="section-title">Nouveautés</h2><p className="mt-1.5 text-sm text-muted">Les dernières arrivées de la collection</p></div><Link to="/nouveautes" className="flex shrink-0 items-center gap-1 text-sm font-semibold hover:underline">Tout voir <ArrowRight className="h-4 w-4" /></Link></div>
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-3 sm:mb-8 sm:items-end"><div className="min-w-0"><h2 className="section-title">Nouveautés</h2><p className="mt-1.5 text-sm text-muted">Les dernières arrivées de la collection</p></div><Link to="/nouveautes" className="flex shrink-0 items-center gap-1 text-sm font-semibold hover:underline">Tout voir <ArrowRight className="h-4 w-4" /></Link></div>
         <ProductGrid products={latestProducts.slice(0, 4)} favorites={favorites} toggleFavorite={toggleFavorite} />
       </section>
       <section className="container-x mt-20 lg:mt-28">
@@ -595,7 +595,7 @@ function CatalogPage({ products: allProducts, categories, favorites, toggleFavor
   return (
     <main className="container-x mb-20 mt-8">
       <p className="mb-4 text-xs text-muted"><Link to="/" className="hover:text-brand">Accueil</Link><span className="mx-2">›</span><Link to="/catalogue" className="hover:text-brand">Catalogue</Link><span className="mx-2">›</span>{category || heading}</p>
-      <h1 className="font-heading text-3xl font-semibold">{heading}</h1>
+      <h1 className="font-heading text-2xl font-semibold sm:text-3xl">{heading}</h1>
       <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted">{category ? `Découvrez notre sélection ${category.toLowerCase()}, pensée pour allier style, qualité et confort.` : "Découvrez nos pièces sélectionnées pour toutes les occasions et tous les styles."}</p>
       {term && <p className="mt-2 text-sm text-muted">Recherche : « {term} »</p>}
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-[230px_minmax(0,1fr)]">
