@@ -303,8 +303,8 @@ function StockPage({ products, onAdjust }: { products: ApiProduct[]; onAdjust: (
   type StockRow = { product: ApiProduct; variantId: string | undefined; color: string; size: string; sku: string | undefined; stock: number };
   const [search, setSearch] = useState("");
   const [amounts, setAmounts] = useState<Record<string, number>>({});
-  const visible = products.filter((product) => `${product.name} ${product.sku ?? ""} ${productCategory(product)}`.toLowerCase().includes(search.toLowerCase()));
-  const rows: StockRow[] = visible.flatMap((product): StockRow[] => product.variants?.length
+  const normalizedSearch = normalizeCategory(search);
+  const rows: StockRow[] = products.flatMap((product): StockRow[] => product.variants?.length
     ? product.variants.map((variant) => ({
         product,
         variantId: variant._id,
@@ -314,13 +314,23 @@ function StockPage({ products, onAdjust }: { products: ApiProduct[]; onAdjust: (
         stock: variant.stock,
       }))
     : [{ product, variantId: undefined, color: "—", size: "—", sku: product.sku, stock: product.stock }]);
+  const matchingRows = normalizedSearch
+    ? rows.filter(({ product, color, size, sku }) => normalizeCategory([
+        product.name,
+        product.sku,
+        productCategory(product),
+        color,
+        size,
+      ].filter(Boolean).join(" ")).includes(normalizedSearch)
+        || normalizeCategory(sku ?? "").includes(normalizedSearch))
+    : rows;
   return <>
     <PageTitle title="Gestion du stock" text="Le stock des produits à variantes est géré par couleur et taille/pointure." />
-    <label className="mb-5 flex max-w-lg items-center gap-2 rounded-xl border border-line bg-white px-4"><Search className="h-4 w-4 text-muted" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher un produit ou un SKU…" className="w-full py-3 text-sm outline-none" /></label>
-    <div className="overflow-x-auto rounded-2xl border border-line bg-white"><table className="w-full min-w-[850px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr>{["Produit", "Couleur", "Taille / pointure", "SKU", "Stock", "Quantité", "Action"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line">{rows.map(({ product, variantId, color, size, sku, stock }) => {
+    <label className="mb-5 flex max-w-lg items-center gap-2 rounded-xl border border-line bg-white px-4"><Search className="h-4 w-4 text-muted" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Produit, référence ou SKU de variante…" className="w-full py-3 text-sm outline-none" /></label>
+    <div className="overflow-x-auto rounded-2xl border border-line bg-white"><table className="w-full min-w-[850px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr>{["Produit", "Couleur", "Taille / pointure", "SKU", "Stock", "Quantité", "Action"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line">{matchingRows.map(({ product, variantId, color, size, sku, stock }) => {
       const key = `${product._id}:${variantId ?? "base"}`;
       return <tr key={key}><td className="px-5 py-4 font-semibold">{product.name}</td><td className="px-5 py-4">{color}</td><td className="px-5 py-4">{size}</td><td className="px-5 py-4 text-muted">{sku || "—"}</td><td className="px-5 py-4 font-bold">{stock}</td><td className="px-5 py-4"><input type="number" min="1" max="100000" value={amounts[key] ?? 1} onChange={(event) => setAmounts({ ...amounts, [key]: nonNegativeInteger(event.target.value) })} className="w-24 rounded-lg border border-line px-3 py-2" /></td><td className="px-5 py-4"><div className="flex gap-2"><button disabled={!amounts[key] || amounts[key] < 1} onClick={() => onAdjust(product._id, variantId, amounts[key] ?? 1, "increase")} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 disabled:opacity-40">Ajouter</button><button disabled={!amounts[key] || amounts[key] < 1} onClick={() => onAdjust(product._id, variantId, amounts[key] ?? 1, "decrease")} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-800 disabled:opacity-40">Retirer</button></div></td></tr>;
-    })}</tbody></table>{!rows.length && <p className="p-10 text-center text-sm text-muted">Aucun produit trouvé.</p>}</div>
+    })}</tbody></table>{!matchingRows.length && <p className="p-10 text-center text-sm text-muted">Aucun produit trouvé.</p>}</div>
   </>;
 }
 
@@ -740,7 +750,12 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState(1);
   const shown = useMemo(() => products.filter((product) => {
-    const matchesQuery = `${product.name} ${product.sku ?? ""} ${productCategory(product)}`.toLowerCase().includes(query.toLowerCase());
+    const matchesQuery = normalizeCategory([
+      product.name,
+      product.sku,
+      productCategory(product),
+      ...(product.variants ?? []).map((variant) => variant.sku),
+    ].filter(Boolean).join(" ")).includes(normalizeCategory(query));
     const matchesCategory = !categoryFilter || categoryId(product) === categoryFilter;
     const price = product.salePrice ?? product.price;
     const matchesMinPrice = minPrice === "" || price >= Number(minPrice);
@@ -903,12 +918,12 @@ function ProductsPage({ products, categories, onSave, onDelete }: { products: Ap
   return <>
     <PageTitle title="Produits" text="Créez, modifiez et supprimez les produits de la base de données." action={<button onClick={() => startEdit()} className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white"><Plus className="mr-1 inline h-4 w-4" />Ajouter un produit</button>} />
     <div className="mb-5 flex flex-wrap items-end gap-3">
-      <label className="flex min-w-56 flex-1 items-center gap-2 rounded-xl border border-line bg-white px-4"><Search className="h-4 w-4 shrink-0 text-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Chercher un produit…" className="w-full py-3 text-sm outline-none" /></label>
+      <label className="flex min-w-56 flex-1 items-center gap-2 rounded-xl border border-line bg-white px-4"><Search className="h-4 w-4 shrink-0 text-muted" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Produit, référence ou SKU de variante…" className="w-full py-3 text-sm outline-none" /></label>
       <label className="min-w-48 text-xs font-semibold text-ink">Catégorie<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="mt-1 block w-full rounded-xl border border-line bg-white px-3 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10"><option value="">Toutes les catégories</option>{categories.map((category) => <option key={category._id} value={category._id}>{category.name}</option>)}</select></label>
       <label className="w-32 text-xs font-semibold text-ink">Prix min.<input type="number" min="0" step="0.001" value={minPrice} onChange={(event) => setMinPrice(event.target.value)} placeholder="Min." className="mt-1 block w-full rounded-xl border border-line bg-white px-3 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10" /></label>
       <label className="w-32 text-xs font-semibold text-ink">Prix max.<input type="number" min="0" step="0.001" value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} placeholder="Max." className="mt-1 block w-full rounded-xl border border-line bg-white px-3 py-3 text-sm font-normal outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/10" /></label>
     </div>
-    <div className="overflow-x-auto rounded-2xl border border-line bg-white"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr>{["Produit", "SKU", "Catégorie", "Prix", "Couleurs / variantes", "Stock total", "Statut", "Actions"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line">{shown.map((product) => <tr key={product._id}><td className="px-5 py-4"><div className="flex items-center gap-3">{(product.image || product.colors?.[0]?.images[0]?.url) && <img src={product.image || product.colors?.[0]?.images[0]?.url} alt="" className="h-12 w-10 rounded-lg object-cover" />}<span className="font-semibold">{product.name}</span></div></td><td className="px-5 py-4 text-muted">{product.sku || "—"}</td><td className="px-5 py-4">{productCategory(product)}</td><td className="px-5 py-4">{money(product.salePrice ?? product.price)}</td><td className="px-5 py-4">{product.colors?.length ?? 0} couleurs · {product.variants?.length ?? 0} variantes</td><td className="px-5 py-4 font-semibold">{product.stock}</td><td className="px-5 py-4">{product.isActive === false ? "Inactif" : "Actif"}</td><td className="px-5 py-4"><div className="flex gap-2"><button onClick={() => startEdit(product)} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:bg-soft">Modifier</button><button onClick={() => void confirmDelete(product)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">Supprimer</button></div></td></tr>)}</tbody></table>{!shown.length && <p className="p-10 text-center text-sm text-muted">Aucun produit.</p>}</div>
+    <div className="overflow-x-auto rounded-2xl border border-line bg-white"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-soft text-xs text-muted"><tr>{["Produit", "Références / SKU", "Catégorie", "Prix", "Couleurs / variantes", "Stock total", "Statut", "Actions"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead><tbody className="divide-y divide-line">{shown.map((product) => <tr key={product._id}><td className="px-5 py-4"><div className="flex items-center gap-3">{(product.image || product.colors?.[0]?.images[0]?.url) && <img src={product.image || product.colors?.[0]?.images[0]?.url} alt="" className="h-12 w-10 rounded-lg object-cover" />}<span className="font-semibold">{product.name}</span></div></td><td className="space-y-1 px-5 py-4 text-muted"><span className="block">{product.sku ? `Produit : ${product.sku}` : "Réf. produit : —"}</span>{product.variants?.map((variant) => variant.sku && <span key={variant._id} className="block text-xs">Variante : {variant.sku}</span>)}</td><td className="px-5 py-4">{productCategory(product)}</td><td className="px-5 py-4">{money(product.salePrice ?? product.price)}</td><td className="px-5 py-4">{product.colors?.length ?? 0} couleurs · {product.variants?.length ?? 0} variantes</td><td className="px-5 py-4 font-semibold">{product.stock}</td><td className="px-5 py-4">{product.isActive === false ? "Inactif" : "Actif"}</td><td className="px-5 py-4"><div className="flex gap-2"><button onClick={() => startEdit(product)} className="rounded-lg border border-line px-3 py-2 text-xs font-semibold hover:bg-soft">Modifier</button><button onClick={() => void confirmDelete(product)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">Supprimer</button></div></td></tr>)}</tbody></table>{!shown.length && <p className="p-10 text-center text-sm text-muted">Aucun produit.</p>}</div>
     {editing && <div role="dialog" aria-modal="true" aria-labelledby="product-form-title" className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-[#171612]/60 p-3 backdrop-blur-sm sm:p-6"><form onSubmit={(event) => void submit(event)} className="my-auto max-h-[94vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/70 bg-[#fffefa] shadow-[0_32px_100px_rgba(0,0,0,0.28)]">
       <header className="sticky top-0 z-10 border-b border-line/80 bg-[#fffefa]/95 px-5 py-5 backdrop-blur-md sm:px-8">
         <div className="flex items-start justify-between gap-4">

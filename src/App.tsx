@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   ArrowRight,
   ArrowLeft,
@@ -53,6 +53,19 @@ const categorySlug = (category: string) => category
   .replace(/[^a-z0-9]+/g, "-")
   .replace(/^-|-$/g, "");
 const categoryPath = (category: string) => `/catalogue/${categorySlug(category)}`;
+const normalizeSearchText = (value: string) => value
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLocaleLowerCase()
+  .trim();
+const productSearchText = (product: DemoProduct) => normalizeSearchText([
+  product.name,
+  product.category,
+  product.productSubtype,
+  product.brand,
+  product.sku,
+  ...(product.variants ?? []).map((variant) => variant.sku),
+].filter(Boolean).join(" "));
 const clothingCategories = [
   "T-shirts et débardeurs",
   "Sweats et hoodies",
@@ -142,17 +155,78 @@ function readStorage<T>(key: string, fallback: T): T {
   }
 }
 
-function Header({ cartCount, favoriteCount, session, search }: { cartCount: number; favoriteCount: number; session: AuthSession | null; search: (value: string) => void }) {
+function ProductSearchForm({ products, term, setTerm, search, className, placeholder }: {
+  products: DemoProduct[];
+  term: string;
+  setTerm: (value: string) => void;
+  search: (value: string) => void;
+  className: string;
+  placeholder: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const suggestionsId = useId();
+  const normalizedTerm = normalizeSearchText(term);
+  const suggestions = normalizedTerm
+    ? products.filter((product) => productSearchText(product).includes(normalizedTerm)).slice(0, 6)
+    : [];
+
+  return (
+    <form onSubmit={(event) => { event.preventDefault(); setIsOpen(false); search(term); }} className={`relative ${className}`}>
+      <div className="flex w-full items-center rounded-full border border-transparent bg-soft/90 px-3 transition focus-within:border-line focus-within:bg-white focus-within:shadow-sm lg:px-4">
+        <Search className="h-4 w-4 shrink-0 text-muted" />
+        <input
+          value={term}
+          onChange={(event) => { setTerm(event.target.value); setIsOpen(true); }}
+          onFocus={() => setIsOpen(true)}
+          onBlur={() => setIsOpen(false)}
+          onKeyDown={(event) => { if (event.key === "Escape") setIsOpen(false); }}
+          className="w-full min-w-0 bg-transparent px-3 py-2.5 text-[13px] outline-none lg:py-3"
+          placeholder={placeholder}
+          aria-label="Rechercher un produit, une référence ou un SKU de variante"
+          aria-expanded={isOpen && Boolean(normalizedTerm)}
+          aria-controls={suggestionsId}
+          role="combobox"
+          aria-autocomplete="list"
+        />
+        <button type="submit" aria-label="Lancer la recherche" className="rounded-full p-1.5 text-muted transition hover:bg-brand hover:text-white lg:bg-white lg:p-2"><ArrowRight className="h-4 w-4" /></button>
+      </div>
+      {isOpen && normalizedTerm && <div id={suggestionsId} role="listbox" aria-label="Produits correspondants" className="absolute left-0 right-0 top-full z-[60] mt-2 max-h-80 overflow-y-auto rounded-xl border border-line bg-white p-2 shadow-xl">
+        {suggestions.length ? suggestions.map((product) => {
+          const matchedVariant = product.variants?.find((variant) => variant.sku && normalizeSearchText(variant.sku) === normalizedTerm);
+          const matchingVariantSkus = product.variants
+            ?.map((variant) => variant.sku)
+            .filter((sku): sku is string => Boolean(sku && normalizeSearchText(sku).includes(normalizedTerm)));
+          const reference = matchingVariantSkus?.length
+            ? `SKU variante : ${matchingVariantSkus.join(", ")}`
+            : product.sku ? `Réf. ${product.sku}` : "Voir le produit";
+          return <Link
+            key={product.slug}
+            to={`/produit/${product.slug}${matchedVariant?.sku ? `?sku=${encodeURIComponent(matchedVariant.sku)}` : ""}`}
+            role="option"
+            aria-selected="false"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setIsOpen(false)}
+            className="flex items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-soft"
+          >
+            <img src={product.image} alt="" className="h-12 w-10 shrink-0 rounded-md bg-soft object-cover" />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-ink">{product.name}</span>
+              <span className="block truncate text-xs text-muted">{reference}</span>
+            </span>
+            <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-muted" />
+          </Link>;
+        }) : <p className="px-3 py-3 text-sm text-muted">Aucun produit trouvé.</p>}
+      </div>}
+    </form>
+  );
+}
+
+function Header({ cartCount, favoriteCount, session, search, products }: { cartCount: number; favoriteCount: number; session: AuthSession | null; search: (value: string) => void; products: DemoProduct[] }) {
   const [term, setTerm] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
 
   useEffect(() => setMenuOpen(false), [location.pathname]);
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    search(term);
-  }
 
   return (
     <>
@@ -160,24 +234,20 @@ function Header({ cartCount, favoriteCount, session, search }: { cartCount: numb
         LIVRAISON OFFERTE DÈS 200 DT <span className="mx-1 text-white/30">·</span> RETOURS FACILES SOUS 14 JOURS
       </div>
       <header className="sticky top-0 z-40 border-b border-line/80 bg-white/95 shadow-[0_4px_18px_rgba(0,0,0,0.035)] backdrop-blur-xl">
-        <div className="container-x flex h-[62px] items-center gap-2 sm:h-[68px] lg:h-[76px] lg:gap-8">
+        <div className="container-x grid h-[62px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center sm:h-[68px] lg:flex lg:h-[76px] lg:gap-8">
           <button className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand lg:hidden" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Fermer le menu" : "Ouvrir le menu"} aria-expanded={menuOpen}>
             {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
-          <Link to="/" aria-label="Haffeli Shop — Accueil" className="absolute left-1/2 flex -translate-x-1/2 items-center gap-2 lg:static lg:translate-x-0 lg:gap-2.5">
+          <Link to="/" aria-label="Haffeli Shop — Accueil" className="flex items-center gap-2 justify-self-center lg:static lg:translate-x-0 lg:gap-2.5">
             <img src="/haffeli-shop-mark.png" alt="" className="h-10 w-10 object-contain sm:h-11 sm:w-11 lg:h-12 lg:w-12" />
             <span className="flex flex-col text-left leading-none">
               <span className="font-heading text-[13px] font-extrabold tracking-[0.08em] sm:text-sm">HAFFELI</span>
               <span className="mt-1 text-[9px] font-bold tracking-[0.25em] text-brand sm:text-[10px]">SHOP</span>
             </span>
           </Link>
-          <form onSubmit={submit} className="mx-auto hidden w-full max-w-[530px] items-center rounded-full border border-transparent bg-soft/90 px-4 transition focus-within:border-line focus-within:bg-white focus-within:shadow-sm lg:flex">
-            <Search className="h-4 w-4 shrink-0 text-muted" />
-            <input value={term} onChange={(event) => setTerm(event.target.value)} className="w-full bg-transparent px-3 py-3 text-[13px] outline-none placeholder:text-muted/80" placeholder="Rechercher un produit, une marque, une catégorie..." aria-label="Rechercher un produit, une marque ou une catégorie" />
-            <button type="submit" aria-label="Lancer la recherche" className="rounded-full bg-white p-2 text-muted transition hover:bg-brand hover:text-white"><ArrowRight className="h-4 w-4" /></button>
-          </form>
-          <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1 lg:ml-0 lg:gap-2">
-            <Link to="/compte" aria-label={session?.user.role === "user" ? `Compte connecté : ${session.user.name}` : "Mon compte"} title={session?.user.role === "user" ? `Connecté : ${session.user.name}` : "Mon compte"} className="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand lg:h-11 lg:w-auto lg:max-w-36 lg:gap-2 lg:rounded-lg lg:px-3">
+          <ProductSearchForm products={products} term={term} setTerm={setTerm} search={search} className="mx-auto hidden w-full max-w-[530px] items-center lg:flex" placeholder="Produit, référence ou SKU de variante..." />
+          <div className="ml-auto flex shrink-0 items-center gap-0.5 justify-self-end sm:gap-1 lg:ml-0 lg:gap-2">
+            <Link to="/compte" aria-label={session?.user.role === "user" ? `Compte connecté : ${session.user.name}` : "Mon compte"} title={session?.user.role === "user" ? `Connecté : ${session.user.name}` : "Mon compte"} className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition hover:bg-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:h-10 sm:w-10 lg:h-11 lg:w-auto lg:max-w-36 lg:gap-2 lg:rounded-lg lg:px-3">
               <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
                 <UserRound className="h-[18px] w-[18px]" />
                 {session?.user.role === "user" && <span aria-hidden="true" className="absolute -right-1 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />}
@@ -187,25 +257,19 @@ function Header({ cartCount, favoriteCount, session, search }: { cartCount: numb
                 {session?.user.role === "user" && <span className="text-[9px] font-medium text-emerald-700">Connecté</span>}
               </span>
             </Link>
-            <Link to="/favoris" aria-label={`Favoris${favoriteCount ? `, ${favoriteCount} article${favoriteCount > 1 ? "s" : ""}` : ""}`} className="group relative flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-soft lg:h-11 lg:w-12 lg:flex-col lg:gap-0.5 lg:rounded-lg">
+            <Link to="/favoris" aria-label={`Favoris${favoriteCount ? `, ${favoriteCount} article${favoriteCount > 1 ? "s" : ""}` : ""}`} className="group relative flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-soft sm:h-10 sm:w-10 lg:h-11 lg:w-12 lg:flex-col lg:gap-0.5 lg:rounded-lg">
               <Heart className={`h-5 w-5 transition-colors group-hover:text-brand ${favoriteCount ? "fill-brand text-brand" : ""}`} />
               {favoriteCount > 0 && <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[9px] font-bold text-white lg:right-2">{favoriteCount > 99 ? "99+" : favoriteCount}</span>}
               <span className="hidden text-[10px] font-medium text-muted group-hover:text-ink lg:block">Favoris</span>
             </Link>
-            <Link to="/panier" aria-label={`Panier${cartCount ? `, ${cartCount} article${cartCount > 1 ? "s" : ""}` : ""}`} className="group relative flex h-10 w-10 items-center justify-center rounded-full transition hover:bg-soft lg:h-11 lg:w-12 lg:flex-col lg:gap-0.5 lg:rounded-lg">
+            <Link to="/panier" aria-label={`Panier${cartCount ? `, ${cartCount} article${cartCount > 1 ? "s" : ""}` : ""}`} className="group relative flex h-9 w-9 items-center justify-center rounded-full transition hover:bg-soft sm:h-10 sm:w-10 lg:h-11 lg:w-12 lg:flex-col lg:gap-0.5 lg:rounded-lg">
               <ShoppingBag className="h-5 w-5 transition-colors group-hover:text-brand" />
               {cartCount > 0 && <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[9px] font-bold text-white lg:right-2">{cartCount > 99 ? "99+" : cartCount}</span>}
               <span className="hidden text-[10px] font-medium text-muted group-hover:text-ink lg:block">Panier</span>
             </Link>
           </div>
         </div>
-        <form onSubmit={submit} className="container-x flex items-center pb-3 lg:hidden">
-          <div className="flex w-full items-center rounded-full border border-transparent bg-soft px-3 transition focus-within:border-line focus-within:bg-white focus-within:shadow-sm">
-            <Search className="h-4 w-4 shrink-0 text-muted" />
-            <input value={term} onChange={(event) => setTerm(event.target.value)} className="w-full bg-transparent px-3 py-2.5 text-[13px] outline-none placeholder:text-muted/80" placeholder="Rechercher un produit, une marque..." aria-label="Rechercher un article" />
-            <button type="submit" aria-label="Lancer la recherche" className="rounded-full p-1.5 text-muted hover:text-brand"><ArrowRight className="h-4 w-4" /></button>
-          </div>
-        </form>
+        <ProductSearchForm products={products} term={term} setTerm={setTerm} search={search} className="container-x flex items-center pb-3 lg:hidden" placeholder="Produit, référence ou SKU de variante..." />
         <nav aria-label="Navigation principale" className="hidden border-t border-line/50 bg-white/35 py-2 backdrop-blur-md lg:block">
           <ul className="container-x mx-auto flex h-11 w-fit items-center justify-center gap-1 rounded-full border border-white/70 bg-white/55 px-2 text-[11px] font-semibold uppercase tracking-[0.13em] shadow-[0_8px_24px_rgba(48,38,20,0.07)] backdrop-blur-xl xl:gap-1.5">
             <li><NavLink to="/" end className={({ isActive }) => `relative flex h-9 items-center rounded-full px-4 transition-all ${isActive ? "bg-white/85 text-brand shadow-sm" : "text-ink/80 hover:bg-white/70 hover:text-brand"}`}>Accueil</NavLink></li>
@@ -378,11 +442,11 @@ function HomePage({ products, categories, favorites, toggleFavorite }: { product
         </div>
       </section>
       <section className="container-x mt-20 lg:mt-28">
-        <div className="mb-8 flex items-end justify-between"><div><h2 className="section-title">Nouveautés</h2><p className="mt-1.5 text-sm text-muted">Les dernières arrivées de la collection</p></div><Link to="/nouveautes" className="flex items-center gap-1 text-sm font-semibold hover:underline">Tout voir <ArrowRight className="h-4 w-4" /></Link></div>
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0"><h2 className="section-title">Nouveautés</h2><p className="mt-1.5 text-sm text-muted">Les dernières arrivées de la collection</p></div><Link to="/nouveautes" className="flex shrink-0 items-center gap-1 text-sm font-semibold hover:underline">Tout voir <ArrowRight className="h-4 w-4" /></Link></div>
         <ProductGrid products={latestProducts.slice(0, 4)} favorites={favorites} toggleFavorite={toggleFavorite} />
       </section>
       <section className="container-x mt-20 lg:mt-28">
-        <div className="mb-8 flex items-end justify-between"><div><h2 className="section-title">À découvrir</h2><p className="mt-1.5 text-sm text-muted">Une sélection de produits de notre catalogue</p></div><Link to="/catalogue" className="flex items-center gap-1 text-sm font-semibold hover:underline">Voir tout <ArrowRight className="h-4 w-4" /></Link></div>
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0"><h2 className="section-title">À découvrir</h2><p className="mt-1.5 text-sm text-muted">Une sélection de produits de notre catalogue</p></div><Link to="/catalogue" className="flex shrink-0 items-center gap-1 text-sm font-semibold hover:underline">Voir tout <ArrowRight className="h-4 w-4" /></Link></div>
         <ProductGrid products={products.slice(0, 4)} favorites={favorites} toggleFavorite={toggleFavorite} />
       </section>
       <section className="container-x mt-20 lg:mt-28">
@@ -410,7 +474,7 @@ function CatalogPage({ products: allProducts, categories, favorites, toggleFavor
       ?? routeCategorySlug
     : queryCategory;
   const navigate = useNavigate();
-  const term = params.get("q")?.toLowerCase() ?? "";
+  const term = normalizeSearchText(params.get("q") ?? "");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sizes, setSizes] = useState<string[]>([]);
@@ -445,7 +509,7 @@ function CatalogPage({ products: allProducts, categories, favorites, toggleFavor
       || product.productSubtype?.trim().toLocaleLowerCase() === normalizedCategory
     );
   }
-  if (term) products = products.filter((product) => `${product.name} ${product.category}`.toLowerCase().includes(term));
+  if (term) products = products.filter((product) => productSearchText(product).includes(term));
   const sizeOptions = [...new Set(products.flatMap((product) => product.sizes))]
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
   const colorOptions = [...new Map(products.flatMap((product) =>
@@ -542,7 +606,7 @@ function CatalogPage({ products: allProducts, categories, favorites, toggleFavor
         <section>
           <div className="mb-5 flex flex-wrap items-center gap-3">
             <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-line px-3"><Search className="h-4 w-4 shrink-0 text-muted" /><input value={params.get("q") ?? ""} onChange={(event) => { const next = new URLSearchParams(params); if (event.target.value) { next.set("q", event.target.value); } else { next.delete("q"); } setParams(next); setPage(1); }} placeholder={`Rechercher ${category ? `un article ${category.toLowerCase()}` : "un produit, une marque"}...`} className="w-full py-2.5 text-sm outline-none" /></label>
-            <select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }} className="rounded-md border border-line bg-white px-3 py-2.5 text-sm"><option>Nouveautés</option><option>Pertinence</option><option>Prix croissant</option><option>Prix décroissant</option></select>
+            <select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }} className="w-full rounded-md border border-line bg-white px-3 py-2.5 text-sm sm:w-auto"><option>Nouveautés</option><option>Pertinence</option><option>Prix croissant</option><option>Prix décroissant</option></select>
             <span className="w-full text-xs text-muted sm:w-auto">{products.length} produits</span>
           </div>
           <ProductGrid products={pageProducts} favorites={favorites} toggleFavorite={toggleFavorite} columns={3} />
@@ -559,6 +623,8 @@ function CatalogPage({ products: allProducts, categories, favorites, toggleFavor
 
 function ProductPage({ products, addToCart, favorites, toggleFavorite }: { products: DemoProduct[]; addToCart: (product: DemoProduct, variantId: string | undefined, size: string, color: string, quantity: number) => void; favorites: string[]; toggleFavorite: (slug: string) => void }) {
   const { slug = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  const requestedSku = searchParams.get("sku") ?? "";
   const product = products.find((item) => item.slug === slug);
   const [size, setSize] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -572,7 +638,12 @@ function ProductPage({ products, addToCart, favorites, toggleFavorite }: { produ
     setQuantity(1);
     setSize("");
     setSelectedColorId("");
-  }, [slug]);
+    const requestedVariant = product?.variants?.find((variant) => variant.sku && normalizeSearchText(variant.sku) === normalizeSearchText(requestedSku));
+    if (requestedVariant) {
+      setSelectedColorId(requestedVariant.colorId);
+      setSize(requestedVariant.size ?? "");
+    }
+  }, [slug, requestedSku, product]);
   if (!product) return <NotFound />;
   const colors = product.colors?.length
     ? product.colors
@@ -1157,7 +1228,7 @@ export default function App() {
   }
   return (
     <div className="min-h-screen" onInvalidCapture={handleInvalidField}>
-      <Header cartCount={cartCount} favoriteCount={favorites.length} session={authSession} search={search} />
+      <Header cartCount={cartCount} favoriteCount={favorites.length} session={authSession} search={search} products={activeProducts} />
       {productsLoading && <p role="status" className="container-x py-12 text-center text-sm text-muted">Chargement du catalogue…</p>}
       <Routes>
         <Route path="/" element={productsLoading ? <p role="status" className="container-x py-12 text-center text-sm text-muted">Chargement du catalogue…</p> : <HomePage products={activeProducts} categories={categories} favorites={favorites} toggleFavorite={toggleFavorite} />} />
